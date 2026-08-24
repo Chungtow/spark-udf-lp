@@ -12,3 +12,7 @@ build/
 .classpath
 .project
 .settings/
+
+# 集群部署脚本（与 hadoop-cluster-physical 集群高度耦合：
+# 硬编码 hivespark03 / mycluster / spark 容器 / JDK8 等，不入库）
+scripts/
