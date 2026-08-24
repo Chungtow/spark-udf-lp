@@ -1,0 +1,3 @@
+# UDF 注册清单：每行 <注册名>|<完整类名>（deploy 脚本按行遍历注册）
+# 新增 UDF 时在此追加一行（注册名统一 udf_ 前缀）
+udf_prefix|com.chungtow.udf.PrefixUdf
