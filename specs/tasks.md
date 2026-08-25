@@ -21,22 +21,20 @@
 - [x] 清理 8 库旧注册，保证 `lpudf` 唯一注册地址
 - [x] `scripts/` 移出版本控制（集群耦合，防泄露）
 
-## 阶段 2: UDAF（规划中）
+## 阶段 2: UDAF（示例已完成）
 
-- [ ] 需求细化（proposal `REQ-UDAF-*`）并评审
-- [ ] design 阶段补充 UDAF 设计与契约（api-spec.yaml）
-- [ ] 首个 UDAF 实现（GenericUDAFResolver2）+ 单测（空输入/单行/多行/含 NULL）
-- [ ] 构建发布 + 集群聚合结果与原生 SQL 对比验证
+- [x] 首个 UDAF 实现 `udaf_string_agg`（去重+字典序拼接）+ 单测（空输入/含 NULL/分片 merge 链）
+- [x] 构建发布 + 集群聚合验证（GROUP BY、去重/排序/NULL 忽略）
+- [ ] 生产级语义细化与评审（proposal `REQ-UDAF-*`，正式需求）
 
-## 阶段 3: UDTF（规划中）
+## 阶段 3: UDTF（示例已完成）
 
-- [ ] 需求细化（proposal `REQ-UDTF-*`）并评审
-- [ ] design 阶段补充 UDTF 设计与契约（api-spec.yaml）
-- [ ] 首个 UDTF 实现（GenericUDTF）+ 单测（输出行数/字段/类型）
-- [ ] 构建发布 + 集群 `LATERAL VIEW` 用法验证
+- [x] 首个 UDTF 实现 `udtf_split_rows`（分隔符字面量拆分）+ 单测（行数/边界/正则元字符）
+- [x] 构建发布 + 集群 `LATERAL VIEW` 用法验证
+- [ ] 生产级语义细化与评审（proposal `REQ-UDTF-*`，正式需求）
 
 ## 阶段 4: 验证与完善
 
-- [ ] L3.3 分布式执行验证（大表/多分区，确认 executor 侧 jar 加载）
-- [ ] Iceberg catalog（`spark_catalog` 代理）兼容性验证
+- [x] L3.3 分布式执行验证（大表/多分区，确认 executor 侧 jar 加载）（2026-08-25 通过，见 inception §4.14：5000 万行/131 task/2 executor，UDF/UDAF/UDTF 全部在 executor 侧执行，UDAF 与内建函数 diff=0）
+- [x] Iceberg catalog（`spark_catalog` 代理）兼容性验证（2026-08-25 通过，见 inception §4.13：代理 + 命名 catalog、分区/行级操作/时间旅行 6 项矩阵全绿）
 - [ ] UDF 库性能/回归基线

@@ -15,8 +15,8 @@ Spark 自定义 UDF（Hive 风格 `GenericUDF`）新项目。构建产物（jar�
 
 ```
 ├── pom.xml                    # Java 8；spark-sql/hive-exec/hadoop-client 均 provided
-├── src/main/java/com/chungtow/udf/   # UDF 源码（继承 GenericUDF）
-├── src/test/java/com/chungtow/udf/   # JUnit 单测（构建闸门）
+├── src/main/java/com/liangpu/udf/   # UDF 源码（继承 GenericUDF）
+├── src/test/java/com/liangpu/udf/   # JUnit 单测（构建闸门）
 ├── builder/                   # 构建镜像（maven:3.9-eclipse-temurin-8）+ settings.xml（阿里云源）
 ├── build.sh                   # 容器化构建入口
 └── scripts/
@@ -52,7 +52,7 @@ beeline -u jdbc:hive2://hivespark03:10015/default \
 
 ## 新增一个 UDF
 
-1. 在 `com.chungtow.udf` 包新增类，继承 `org.apache.hadoop.hive.ql.udf.generic.GenericUDF`（参考 `PrefixUdf`）；
+1. 在 `com.liangpu.udf` 包新增类，继承 `org.apache.hadoop.hive.ql.udf.generic.GenericUDF`（参考 `PrefixUdf`）；
 2. 新增 JUnit 单测（`src/test/java`，覆盖正常/null/边界/入参错误）；
 3. `scripts/udf-manifest.txt` 追加一行：`注册名|完整类名`；
 4. 重新构建发布：`bash build.sh <VER> && bash scripts/deploy_spark_udf_lp.sh <VER>`；

@@ -16,7 +16,7 @@ functions:
   udf_prefix:
     kind: UDF
     status: released            # released | planned
-    class: com.chungtow.udf.PrefixUdf
+    class: com.liangpu.udf.PrefixUdf
     description: 字符串前缀截断，返回前 4 个字符；null 透传；短于 4 字符原样返回
     parameters:
       - name: s
@@ -30,15 +30,40 @@ functions:
         result: "abcd"
       - sql: "SELECT lpudf.udf_prefix(NULL)"
         result: "NULL"
-  # TODO: UDAF / UDTF 契约模板（待 proposal 评审后填充）
-  # 例如:
-  #  udaf_xxx:
-  #    kind: UDAF
-  #    status: planned
-  #    class: com.chungtow.udaf.XxxUDAF
-  #    description: ...
-  #  udtf_xxx:
-  #    kind: UDTF
-  #    status: planned
-  #    class: com.chungtow.udtf.XxxUDTF
-  #    description: ...
+  udaf_string_agg:
+    kind: UDAF
+    status: released            # released | planned
+    class: com.liangpu.udaf.StringAggUDAF
+    description: 组内字符串去重后按字典序拼接（逗号分隔）；NULL 行忽略
+    parameters:
+      - name: v
+        type: string
+        required: true
+        description: 参与聚合的列
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT key, lpudf.udaf_string_agg(v) AS agg FROM t GROUP BY key"
+        result: "v=b,a,b 时 → a,b（去重+排序）"
+  udtf_split_rows:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.SplitRowsUDTF
+    description: 字符串按分隔符拆分为多行单列；分隔符按字面量匹配（非正则）；NULL/空输入无输出；分隔符为 NULL/空时默认逗号
+    parameters:
+      - name: s
+        type: string
+        required: true
+        description: 待拆字符串
+      - name: delim
+        type: string
+        required: false
+        description: 分隔符（默认 ","）
+    returns:
+      type: table
+      columns:
+        - name: item
+          type: string
+    examples:
+      - sql: "SELECT x FROM LATERAL VIEW lpudf.udtf_split_rows('a,b,c', ',') t AS x"
+        result: "3 行: a / b / c"

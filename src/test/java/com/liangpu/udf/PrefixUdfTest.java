@@ -1,4 +1,4 @@
-package com.chungtow.udf;
+package com.liangpu.udf;
 
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;

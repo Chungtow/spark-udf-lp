@@ -1,4 +1,4 @@
-package com.chungtow.udf;
+package com.liangpu.udf;
 
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
@@ -11,13 +11,13 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  *
  * <p>注册（写入 Hive Metastore 永久函数，STS 重启后依然可用）：</p>
  * <pre>
- * CREATE OR REPLACE FUNCTION udf_prefix AS 'com.chungtow.udf.PrefixUdf'
+ * CREATE OR REPLACE FUNCTION udf_prefix AS 'com.liangpu.udf.PrefixUdf'
  *   USING JAR 'hdfs://mycluster/udf/spark-udf-lp-&lt;VER&gt;.jar';
  * </pre>
  *
  * <p>新增 UDF 规范：</p>
  * <ol>
- *   <li>在 com.chungtow.udf 包下新增类，继承 {@link GenericUDF}；</li>
+ *   <li>在 com.liangpu.udf 包下新增类，继承 {@link GenericUDF}；</li>
  *   <li>新增对应 JUnit 单测（src/test/java）；</li>
  *   <li>在 scripts/udf-manifest.txt 追加一行：注册名|类名；</li>
  *   <li>重新构建发布：bash build.sh &lt;VER&gt; + scripts/deploy_spark_udf_lp.sh &lt;VER&gt;。</li>

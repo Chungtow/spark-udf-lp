@@ -14,7 +14,7 @@
 
 ## 2. 模块划分
 
-### 2.1 `src/main/java/com/chungtow/udf/` — 函数实现
+### 2.1 `src/main/java/com/liangpu/udf/` — 函数实现
 （待填：UDF / UDAF / UDTF 包结构、类职责、命名规范、注册名规范 `udf_`/`uda_`/`udtf_`）
 
 ### 2.2 `builder/` — 构建镜像
@@ -49,4 +49,8 @@
 
 ## 7. 风险与对策
 
-（待填：Iceberg catalog 代理 `spark_catalog` 对函数加载的影响、YARN 资源、跨库兼容等）
+| 风险 | 状态 | 结论/对策 |
+|---|---|---|
+| Iceberg catalog 代理 `spark_catalog` 对函数加载的影响 | **已消除**（inception §4.13 实测） | 函数与存储格式解耦、catalog 代理不干预函数解析：代理模式（SparkSessionCatalog）与命名 catalog（SparkCatalog）下三函数均正常，与 Hive 表结果一致；分区/行级操作/时间旅行无影响 |
+| YARN 资源（executor 侧 jar 加载完整链路） | 待验证 | L3.3 分布式大表验证（tasks.md 阶段 4） |
+| 跨库兼容（`lpudf.<fn>` 全限定引用） | 已消除 | inception §5.3：lpdw_dev / gmall_dw 等任意库通过 |
