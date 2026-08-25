@@ -1,0 +1,44 @@
+# spark-udf-lp 函数接口契约（api-spec）
+
+# 说明:
+#   - UDF / UDAF / UDTF 非 HTTP 接口，本文件以 OpenAPI 风格 YAML 描述函数签名契约。
+#   - 函数统一注册于 lpudf 库，任意库以 lpudf.<函数名> 全限定引用。
+#   - 状态: 骨架（Draft），随 design/实现阶段逐步填充。
+openapi: "3.0.3"
+info:
+  title: spark-udf-lp 函数契约
+  version: 1.0.0
+  description: >
+    Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约。
+    构建产物发布至 HDFS /udf/，函数注册于 lpudf 库（唯一注册地址）。
+
+functions:
+  udf_prefix:
+    kind: UDF
+    status: released            # released | planned
+    class: com.chungtow.udf.PrefixUdf
+    description: 字符串前缀截断，返回前 4 个字符；null 透传；短于 4 字符原样返回
+    parameters:
+      - name: s
+        type: string
+        required: true
+        description: 输入字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.udf_prefix('abcdefgh')"
+        result: "abcd"
+      - sql: "SELECT lpudf.udf_prefix(NULL)"
+        result: "NULL"
+  # TODO: UDAF / UDTF 契约模板（待 proposal 评审后填充）
+  # 例如:
+  #  udaf_xxx:
+  #    kind: UDAF
+  #    status: planned
+  #    class: com.chungtow.udaf.XxxUDAF
+  #    description: ...
+  #  udtf_xxx:
+  #    kind: UDTF
+  #    status: planned
+  #    class: com.chungtow.udtf.XxxUDTF
+  #    description: ...

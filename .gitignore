@@ -16,3 +16,7 @@ build/
 # 集群部署脚本（与 hadoop-cluster-physical 集群高度耦合：
 # 硬编码 hivespark03 / mycluster / spark 容器 / JDK8 等，不入库）
 scripts/
+
+# Inception 造梦文档（内部过程沉淀：含试错记录、集群细节，公开仓库不暴露；
+# 对外正式需求以 specs/proposal.md 为准）
+specs/inception.md
