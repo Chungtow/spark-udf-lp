@@ -26,6 +26,7 @@
     <hive.version>2.3.9</hive.version>
     <hadoop.version>3.1.4</hadoop.version>
     <junit.version>4.13.2</junit.version>
+    <fastjson2.version>2.0.56</fastjson2.version>
   </properties>
 
   <dependencies>
@@ -61,6 +62,14 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- JSON 解析引擎（json_* 函数系列）：阿里同源、JSONPath 语义贴近 MaxCompute；
+         compile 作用域（非 provided），shade 重定位打入最终 jar，避免与集群其他组件类冲突 -->
+    <dependency>
+      <groupId>com.alibaba.fastjson2</groupId>
+      <artifactId>fastjson2</artifactId>
+      <version>${fastjson2.version}</version>
+    </dependency>
+
     <!-- 单元测试 -->
     <dependency>
       <groupId>junit</groupId>
@@ -91,6 +100,29 @@
           <!-- 单测失败即构建失败（本地闸门） -->
           <failIfNoTests>false</failIfNoTests>
         </configuration>
+      </plugin>
+      <!-- shade：将 fastjson2 重定位打入最终 jar（com.alibaba.fastjson2 -> com.liangpu.shaded.fastjson2） -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <relocations>
+                <relocation>
+                  <pattern>com.alibaba.fastjson2</pattern>
+                  <shadedPattern>com.liangpu.shaded.fastjson2</shadedPattern>
+                </relocation>
+              </relocations>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

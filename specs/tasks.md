@@ -1,40 +1,67 @@
 # Tasks: spark-udf-lp — 任务清单
 
-> 状态: 骨架（Draft）
+> 状态: 本期迭代（Draft）
 > 基于 `proposal.md` 需求拆解，design 阶段细化后逐项勾选执行。
 > 约定: `- [x]` 已完成，`- [ ]` 待执行。
+> 生命周期: 与当前分支 `feat/json-processor` 开发周期绑定；阶段 0/1 为仓库基线历史事实，保留不动。
 
-## 阶段 0: 项目骨架（已完成）
+## 阶段 0: 项目骨架（基线，已完成）
 
 - [x] GitHub 建仓（Chungtow/spark-udf-lp）+ 父项目 submodule 挂载
 - [x] `pom.xml`（Java 8 / spark 3.3.1 / hive 2.3.9 / hadoop 3.1.4，均 provided）+ 目录结构 + README
-- [x] `builder/` 构建镜像（`maven:3.9-eclipse-temurin-8` + `settings.xml` 阿里云源）+ `build.sh`
-- [x] `PrefixUdf` 实现（GenericUDF，前 4 字符）+ JUnit 单测（L1 闸门）
-- [x] 容器化构建出包 `target/spark-udf-lp-1.0.0.jar`（纯 UDF 类）
+- [x] `builder/` 构建镜像 + `build.sh`
+- [x] 首个 UDF 实现 + JUnit 单测（L1 闸门）
 
-## 阶段 1: 发布与注册链路（已完成）
+## 阶段 1: 发布与注册链路（基线，已完成）
 
 - [x] HDFS `/udf/spark-udf-lp-<VER>.jar` 版本化上传
-- [x] `lpudf` 库统一注册（`CREATE OR REPLACE FUNCTION lpudf.<name> ... USING JAR`）
-- [x] beeline/STS 冒烟验证（功能矩阵 6/6 通过）
-- [x] 跨库全限定调用验证（lpdw_dev / gmall_dw）
-- [x] 清理 8 库旧注册，保证 `lpudf` 唯一注册地址
+- [x] `lpudf` 库统一注册（唯一注册地址，DROP+CREATE）
 - [x] `scripts/` 移出版本控制（集群耦合，防泄露）
 
-## 阶段 2: UDAF（示例已完成）
+## 阶段 2: 本期迭代（REQ-UDF-1~9 + REQ-INFRA-1~4）
 
-- [x] 首个 UDAF 实现 `udaf_string_agg`（去重+字典序拼接）+ 单测（空输入/含 NULL/分片 merge 链）
-- [x] 构建发布 + 集群聚合验证（GROUP BY、去重/排序/NULL 忽略）
-- [ ] 生产级语义细化与评审（proposal `REQ-UDAF-*`，正式需求）
+### 2.1 共享 JSON 解析层（com.liangpu.json）
 
-## 阶段 3: UDTF（示例已完成）
+- [x] `JsonSupport`: fastjson2 解析入口 + 异常分类（JsonSyntaxException / JsonPathException）
+- [x] `JsonPathSupport`: JSONPath 编译缓存 + 求值 + path 子集校验（ADR-1）
+- [x] POC 单测: fastjson2 对 path 子集行为验证（`$a` 非法、键含点、数组下标越界）→ 差异项回写 api-spec 边界
 
-- [x] 首个 UDTF 实现 `udtf_split_rows`（分隔符字面量拆分）+ 单测（行数/边界/正则元字符）
-- [x] 构建发布 + 集群 `LATERAL VIEW` 用法验证
-- [ ] 生产级语义细化与评审（proposal `REQ-UDTF-*`，正式需求）
+### 2.2 P0 函数（REQ-UDF-1~4）
 
-## 阶段 4: 验证与完善
+- [x] `JsonValidUdf` + 单测（REQ-UDF-1）
+- [x] `JsonExtractUdf` + 单测（REQ-UDF-2）
+- [x] `JsonLengthUdf` + 单测（REQ-UDF-3）
+- [x] `JsonExplodeUDTF` + 单测（REQ-UDF-4）
 
-- [x] L3.3 分布式执行验证（大表/多分区，确认 executor 侧 jar 加载）（2026-08-25 通过，见 inception §4.14：5000 万行/131 task/2 executor，UDF/UDAF/UDTF 全部在 executor 侧执行，UDAF 与内建函数 diff=0）
-- [x] Iceberg catalog（`spark_catalog` 代理）兼容性验证（2026-08-25 通过，见 inception §4.13：代理 + 命名 catalog、分区/行级操作/时间旅行 6 项矩阵全绿）
-- [ ] UDF 库性能/回归基线
+### 2.3 P1 函数（REQ-UDF-5~9）
+
+- [x] `JsonTypeUdf` + 单测（REQ-UDF-5）
+- [x] `JsonExistsUdf` + 单测（REQ-UDF-6）
+- [x] `JsonContainsUdf` + 单测（REQ-UDF-7）
+- [x] `JsonPrettyUdf` + 单测（REQ-UDF-8）
+- [x] `JsonStripNullsUdf` + 单测（REQ-UDF-9）
+
+### 2.4 基础设施（REQ-INFRA-1~4）
+
+- [x] pom 增加 fastjson2 依赖 + shade relocation（REQ-INFRA-2 配套）
+- [x] `scripts/udf-manifest.txt` 追加 9 行注册（无前缀注册名，REQ-INFRA-1）
+- [x] api-spec.yaml 9 函数条目与实现/单测一致（REQ-INFRA-2，已完成初稿）
+- [x] README 调用约定同步（库内裸名 / 跨库 `lpudf.<fn>`，REQ-INFRA-4）
+- [x] 变更记录更新 inception.md
+
+## 阶段 3: 构建、部署与集群验证
+
+- [x] `build.sh <VER>` 构建通过（L1 单测全绿 + shade 后 `jar tf` 抽查无顶包残留）
+- [x] `scripts/release_spark_udf_lp.sh <VER>` 制品入库（software/spark-udf/）
+- [x] `scripts/deploy_spark_udf_lp.sh <VER>` 部署 + lpudf 注册
+- [ ] 重启 STS（classloader 类缓存，坑 B）——与 L3.4 一并人工执行
+- [x] L3.1 注册冒烟: `SHOW FUNCTIONS IN lpudf` 见 9 函数
+- [x] L3.2 功能矩阵: 常量矩阵全函数验证（scripts/uat/l32_json_functions.sql，19 例）+ trade_order 表场景可补
+- [ ] L3.4 持久性: 重启 STS 后函数仍可用（人工确认）
+- [x] L4 回归: 迭代 1 函数冒烟（l32_function_matrix.sql，lpudf.udf_prefix 全限定）
+- [ ] （如需要）L3.3 分布式验证（tmp_udf_big 大表 GROUP BY）
+
+## 阶段 4: 收尾
+
+- [ ] commit + push `feat/json-processor`
+- [ ] PR 合入 `dev`（评审通过）
