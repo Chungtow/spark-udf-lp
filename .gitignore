@@ -20,3 +20,6 @@ scripts/
 # Inception 造梦文档（内部过程沉淀：含试错记录、集群细节，公开仓库不暴露；
 # 对外正式需求以 specs/proposal.md 为准）
 specs/inception.md
+
+# 意外创建的本地 Maven 仓库（-Dmaven.repo.local=~/.m2 时波浪号未展开，相对路径落在源码目录）
+~

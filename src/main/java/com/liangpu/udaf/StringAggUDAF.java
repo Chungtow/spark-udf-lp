@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * 示例 UDAF：字符串列聚合去重拼接。
@@ -41,6 +42,9 @@ import java.util.List;
  *   <li>partial 分片用 {@code \u0001}（Hive 不可见分隔符）连接为 Text，避免值内含逗号歧义。</li>
  * </ul>
  */
+@ExpressionDescription(
+        usage = "udaf_string_agg(col) - 字符串列聚合去重拼接：按字典序排序、逗号分隔输出，NULL 行忽略。",
+        arguments = "col - 待聚合的字符串列")
 public class StringAggUDAF extends AbstractGenericUDAFResolver {
 
     @Override

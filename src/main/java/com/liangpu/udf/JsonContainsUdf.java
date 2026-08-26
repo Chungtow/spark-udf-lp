@@ -14,6 +14,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 
 import java.math.BigDecimal;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_contains(json, candidate[, path])：判断 JSON 数据是否包含指定元素
@@ -37,6 +38,9 @@ import java.util.Map;
  * SELECT json_contains('{"a":1,"b":2,"c":{"d":4}}', '1', '$.a');      -- true
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_contains(json, candidate[, path]) - 判断 JSON 数据是否包含与 candidate 深度相等的节点（覆盖数组元素/对象值匹配），包含返回 true；path 不存在或语法非法返回 false。",
+        arguments = "json - 待检查的 JSON 文本\ncandidate - 要匹配的 JSON 元素文本，如 '4'、'\"abc\"'、'{\"a\":1}'\npath - JSONPath 表达式（可选）")
 public class JsonContainsUdf extends GenericUDF {
 
     @Override

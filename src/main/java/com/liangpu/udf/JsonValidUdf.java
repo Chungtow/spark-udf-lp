@@ -6,6 +6,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_valid(str)：校验输入字符串是否为合法 JSON（RFC 8259），返回 true / false。
@@ -19,6 +20,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  * SELECT json_valid('abc');      -- false
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_valid(json) - 校验输入字符串是否为合法 JSON（RFC 8259），合法返回 true，非法返回 false；SQL NULL 入参返回 NULL。",
+        arguments = "json - 待校验的 JSON 文本")
 public class JsonValidUdf extends GenericUDF {
 
     @Override

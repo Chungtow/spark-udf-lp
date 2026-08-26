@@ -12,6 +12,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 
 import java.util.Map;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_pretty(json)：美化 JSON 输出（增加换行与缩进，对齐 MaxCompute JSON_PRETTY 展示格式：
@@ -29,6 +30,9 @@ import java.util.Map;
  * -- }
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_pretty(json) - 美化 JSON：增加换行与缩进（每层 4 空格缩进、键值冒号后无空格）。",
+        arguments = "json - JSON 文本")
 public class JsonPrettyUdf extends GenericUDF {
 
     private static final String INDENT_UNIT = "    "; // 4 空格

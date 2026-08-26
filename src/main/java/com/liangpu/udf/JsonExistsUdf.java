@@ -8,6 +8,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_exists(json, path)：判断 JSONPath 对应的值是否存在（对齐 MaxCompute JSON_EXISTS）。
@@ -22,6 +23,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  * SELECT json_exists('{"a":null}', '$.a');      -- true（键存在）
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_exists(json, path) - 判断 JSONPath 对应值是否存在，存在返回 true（含值为 null 的键），不存在或数组越界返回 false。",
+        arguments = "json - JSON 文本\npath - JSONPath 表达式")
 public class JsonExistsUdf extends GenericUDF {
 
     @Override

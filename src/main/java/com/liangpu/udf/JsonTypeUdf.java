@@ -9,6 +9,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_type(json)：返回 JSON 数据类型名称（对齐 MaxCompute JSON_TYPE），小写枚举：
@@ -23,6 +24,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  * SELECT json_type('null');         -- null
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_type(json) - 返回 JSON 数据类型名称（小写）：string / number / boolean / null / object / array。",
+        arguments = "json - JSON 文本")
 public class JsonTypeUdf extends GenericUDF {
 
     @Override

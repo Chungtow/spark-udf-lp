@@ -13,6 +13,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * 示例 UDTF：字符串按分隔符拆分为多行（一进多出，单列）。
@@ -32,6 +33,9 @@ import java.util.regex.Pattern;
  * <p>边界约定：输入为 NULL 或空串时无输出；分隔符为 NULL/空时默认逗号；
  * 分隔符按正则字面量匹配（Pattern.quote），且保留尾部分隔产生的空项（split -1）。</p>
  */
+@ExpressionDescription(
+        usage = "udtf_split_rows(str, delim) - 字符串按分隔符拆分为多行（单列输出）；NULL/空串无输出，分隔符 NULL/空时默认逗号。",
+        arguments = "str - 待拆分的字符串\ndelim - 分隔符（字面量匹配）")
 public class SplitRowsUDTF extends GenericUDTF {
 
     private transient PrimitiveObjectInspector inputOI0; // 待拆字符串

@@ -10,6 +10,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_length(json[, path])：返回 JSON 数据的长度（对齐 MaxCompute JSON_LENGTH）。
@@ -27,6 +28,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  * SELECT json_length('123');                                 -- 1
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_length(json[, path]) - 返回 JSON 数据长度：数组为元素数、对象为成员数、其它类型为 1，不递归计算；未指定 path 时作用于整个 JSON。",
+        arguments = "json - JSON 文本\npath - JSONPath 表达式（可选）")
 public class JsonLengthUdf extends GenericUDF {
 
     @Override
