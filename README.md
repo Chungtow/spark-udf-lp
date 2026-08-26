@@ -56,7 +56,7 @@ beeline -u jdbc:hive2://hivespark03:10015/default \
 2. 新增 JUnit 单测（`src/test/java`，覆盖正常/null/边界/入参错误）；
 3. `scripts/udf-manifest.txt` 追加一行：`注册名|完整类名`；
 4. 重新构建发布：`bash build.sh <VER> && bash scripts/deploy_spark_udf_lp.sh <VER>`；
-5. 跑 UAT 并留档 `docs/uat/spark_udf_uat_report_YYYYMMDD.md`。
+5. 跑 UAT 并留档 `docs/uat/YYYYMMDD-spark-udf-lp-UAT测试报告.md`。
 
 ## 分支策略
 
@@ -70,4 +70,4 @@ beeline -u jdbc:hive2://hivespark03:10015/default \
 
 - **关键依赖均 provided**：jar 只含 UDF 类，禁止携带 spark/hive/hadoop 类（构建后 `jar tf` 抽查）；
 - **jar 版本化**：HDFS `/udf/spark-udf-lp-<VER>.jar` 不可覆盖，升级 = 新版本 + `CREATE OR REPLACE`；
-- 注册名统一 `udf_` 前缀，避免函数名冲突。
+- 注册名：迭代 1 函数统一 `udf_` 前缀；迭代 2 起新函数**无前缀**（`lpudf` 库即命名空间，用 MC 原生名如 `json_valid`，ADR-8）。
