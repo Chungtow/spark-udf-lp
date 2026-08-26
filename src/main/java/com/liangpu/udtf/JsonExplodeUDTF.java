@@ -17,6 +17,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_explode(json)：将 JSON 数组或对象展开为多行（对齐 MaxCompute JSON_EXPLODE）。
@@ -40,6 +41,9 @@ import java.util.Map;
  * -- 2 行: (a,123) / (b,hello)
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_explode(json) - 将 JSON 数组/对象展开为多行（固定输出两列 key, value）：数组每元素一行 key 为 NULL，对象每键一行；NULL/非法 JSON/非数组对象输出 0 行。",
+        arguments = "json - JSON 数组或对象文本")
 public class JsonExplodeUDTF extends GenericUDTF {
 
     private transient PrimitiveObjectInspector inputOI;

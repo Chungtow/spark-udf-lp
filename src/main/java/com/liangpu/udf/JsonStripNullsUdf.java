@@ -14,6 +14,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 
 import java.util.Iterator;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_strip_nulls(json[, include_arrays][, remove_empty][, path])：
@@ -37,6 +38,9 @@ import java.util.Map;
  * SELECT json_strip_nulls('{"a":{"c":null},"b":1}', true, true);    -- {"b":1}
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_strip_nulls(json[, include_arrays[, remove_empty[, path]]]) - 递归移除值为 null 的字段/元素；include_arrays 默认 true，remove_empty 默认 false，path 仅限第 4 参。",
+        arguments = "json - JSON 文本（对象或数组）\ninclude_arrays - 是否删除数组内 null（可选，默认 true）\nremove_empty - 删除后是否移除空对象/空数组（可选，默认 false）\npath - JSONPath，仅处理该路径下的 null（必须作为第 4 参）")
 public class JsonStripNullsUdf extends GenericUDF {
 
     @Override

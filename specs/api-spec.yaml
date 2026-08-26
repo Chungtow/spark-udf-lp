@@ -3,10 +3,12 @@
 # 说明:
 #   - UDF / UDAF / UDTF 非 HTTP 接口，本文件以 OpenAPI 风格 YAML 描述函数签名契约。
 #   - 函数统一注册于 lpudf 库，任意库以 lpudf.<函数名> 全限定引用。
-#   - 生命周期: 与当前分支开发周期绑定，新周期从空模板重新填充。
+#   - 生命周期: 与当前分支 `feat/lpudf-help` 开发周期绑定（迭代 3: desc function 帮助信息）；函数契约本身为长期资产，跨周期保留。
 #   - 入参形态: 全部为 Spark STRING（JSON 文本）——Spark 3.3.1 无 JSON 类型，语义对齐 MaxCompute、入参形态适配（design ADR-3）。
 #   - 边界总则（design ADR-3）: 非法 JSON 文本（数据问题）→ NULL / UDTF 0 行；非法 path 语法（写法问题）→ 抛错；
 #     函数内特殊约定（json_contains / json_strip_nulls 的 path 行为）以各条目 description 为准。
+#   - 帮助信息（迭代 3，REQ-HELP-4）: 各函数条目的 description 为 desc function 帮助文本的**唯一事实来源**，
+#     函数类 `@ExpressionDescription` 注解文本与之勾稽一致。
 openapi: "3.0.3"
 info:
   title: spark-udf-lp 函数契约
@@ -14,6 +16,7 @@ info:
   description: >
     Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约——JSON 处理函数系列（对齐 MaxCompute 同名函数）。
     构建产物发布至 HDFS /udf/，函数注册于 lpudf 库（唯一注册地址）。
+    迭代 3: 函数帮助信息（desc function）以本文件各条目的 description 为唯一事实来源。
 
 functions:
   json_valid:
@@ -309,3 +312,26 @@ functions:
         result: "(NULL,1),(NULL,true),(NULL,2),(NULL,{\"a\":456})"
       - sql: "SELECT t.key, t.value FROM (SELECT 1) x LATERAL VIEW json_explode('{\"a\":123,\"b\":\"hello\"}') t AS key, value"
         result: "(a,123),(b,hello)"
+
+# ============================================================================
+# 帮助信息（desc function）契约 —— 迭代 3（REQ-HELP-1~6）
+# ============================================================================
+# 目标: `DESC FUNCTION lpudf.<fn>` 输出与 Spark 内置函数一致的三段式帮助信息。
+#
+# 输出格式（对齐内置函数）:
+#   DESC FUNCTION lpudf.<fn>
+#     Function: <fn>
+#     Class: <全限定类名>
+#     Usage: <usage 文本>
+#   DESC FUNCTION EXTENDED lpudf.<fn>（追加）
+#     Arguments: <arguments 文本>
+#     Examples: <examples 文本>
+#     Note: <note 文本>（如无则省略）
+#
+# 文本规范:
+#   - usage 格式: `<签名> - <一句话语义>`；函数名直接书写（注入路径不经 _FUNC_ 占位替换——
+#     内置函数的 _FUNC_ 由注册宏替换，extensions 注入路径无此机制，故直写函数名，见 design ADR-11）
+#   - 各函数 usage / arguments 文本与上方 functions.<fn>.description 内容一致（唯一事实来源，
+#     由 LpudfFunctionRegistryTest 勾稽函数名；usage 全文人工核对）
+#   - 12 个函数全部覆盖（迭代 1 的 3 个示例 + 迭代 2 的 9 个 JSON 函数）
+#   - 纯元数据增强: 不改变签名 / 行为 / 注册名（REQ-HELP-5）

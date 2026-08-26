@@ -5,6 +5,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * 示例 UDF：字符串前缀截断（截取前 4 个字符）。
@@ -23,6 +24,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  *   <li>重新构建发布：bash build.sh &lt;VER&gt; + scripts/deploy_spark_udf_lp.sh &lt;VER&gt;。</li>
  * </ol>
  */
+@ExpressionDescription(
+        usage = "udf_prefix(str) - 返回字符串前 4 个字符（示例 UDF）；str 为 NULL 时返回 NULL。",
+        arguments = "str - 字符串表达式")
 public class PrefixUdf extends GenericUDF {
 
     public static final int PREFIX_LEN = 4;

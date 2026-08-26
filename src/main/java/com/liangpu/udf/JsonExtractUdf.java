@@ -9,6 +9,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 
 /**
  * json_extract(json, path)：按 JSONPath 提取值，返回 JSON 文本（对齐 MaxCompute JSON_EXTRACT）。
@@ -27,6 +28,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
  * SELECT json_extract('[1,2,{"a":34}]', '$[2].a'); -- 34
  * </pre>
  */
+@ExpressionDescription(
+        usage = "json_extract(json, path) - 按 JSONPath 提取值并返回 JSON 文本；path 支持 $.key / $[n] / $['key'] 子集，目标不存在返回 NULL，path 语法非法抛错，非法 JSON 返回 NULL。",
+        arguments = "json - JSON 文本\npath - JSONPath 表达式，如 '$.a'、'$.a[0]'")
 public class JsonExtractUdf extends GenericUDF {
 
     @Override
