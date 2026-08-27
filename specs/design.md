@@ -1,112 +1,84 @@
-# Design: spark-udf-lp — 字符串处理函数（迭代 4）架构设计
+# Design: spark-udf-lp — 聚合函数族（迭代 5，目标 1.1.5）
 
-> 状态: 待评审（Draft）
+> 状态: 已定稿（Approved）
 > 关联: 基于 `proposal.md` 展开，为 SDD design 阶段产物。
-> 生命周期: 与当前分支开发周期绑定；跨周期稳定决策（Java8 编译/运行、hive-exec 2.3.9 provided、lpudf 唯一注册地址、ADR-3 边界 / ADR-8 命名 / ADR-9 会话级注入 / ADR-11 文档化）沿用既有 skeleton 版 design，本节仅增补本期 ADR-12~15。
+> 生命周期: 与当前分支开发周期绑定；跨周期稳定决策（Java8 编译/运行、hive-exec 2.3.9 provided、lpudf 唯一注册地址、注册名裸名 ADR-8 等）见既有 design 的 ADR。
 
 ## 1. 架构总览
 
-本期**不引入任何新机制**，10 个函数全部复用既有链路（构建 → 发布 → 会话级注入 → 任意库调用），唯一的新技术点是 `regexp_extract_all` 返回 `ArrayType`（SPIKE 已验证可行）。
+本期**只新增 UDAF 实现类**，不引入新依赖、不改构建/部署链路：
 
 ```
-[src/main/java/com/liangpu/{udf,udtf}/] 10 个新类 + help 注册条目
-        │ build.sh（builder 容器 maven，provided 依赖）
-        ▼
-[target/spark-udf-lp-<VER>.jar] --release_spark_udf_lp.sh--> [父仓库 software/spark-udf/]
-        │ deploy_spark_udf_lp.sh（HDFS 上传 /udf/ + cp current + 幂等更新 spark-defaults.conf）
-        ▼
-[spark.sql.extensions=...,com.liangpu.help.LpudfExtensions] --docker restart spark--> [lpudf 库 22 函数注入]
-        │
-        ▼
-[STS 任意库: SELECT lpudf.<fn>(...) ; DESC FUNCTION lpudf.<fn>]
+[src/main/java/com/liangpu/udaf/*.java] --build.sh 1.1.5(builder 容器)--> [spark-udf-lp-1.1.5.jar]
+  --> deploy_spark_udf_lp.sh --> [HDFS /udf/] --DROP+CREATE--> [lpudf 库(裸名注册)]
+  --> LpudfExtensions 会话级注入帮助信息 --> [STS 任意库 lpudf.<fn> 调用]
 ```
 
 ## 2. 模块划分
 
-### 2.1 `src/main/java/com/liangpu/{udf,udtf}/` — 函数实现（10 个新类）
+### 2.1 `src/main/java/com/liangpu/udaf/` — 8 个新 UDAF
 
-| # | 注册名 | 类型 | 类 | 继承 | 备注 |
-|---|---|---|---|---|---|
-| 1 | `keyvalue` | UDF | `com.liangpu.udf.KeyvalueUdf` | `GenericUDF` | 2/4 参变体（`args.length` 分支） |
-| 2 | `keyvalue_tuple` | UDTF | `com.liangpu.udtf.KeyvalueTupleUDTF` | `GenericUDTF` | 可变 key 参数，先例 `JsonExplodeUDTF` |
-| 3 | `url_encode` | UDF | `com.liangpu.udf.UrlEncodeUdf` | `GenericUDF` | 单参 |
-| 4 | `url_decode` | UDF | `com.liangpu.udf.UrlDecodeUdf` | `GenericUDF` | 单参，非法序列→NULL |
-| 5 | `mask_hash` | UDF | `com.liangpu.udf.MaskHashUdf` | `GenericUDF` | SHA-256，64 字符 hex |
-| 6 | `regexp_count` | UDF | `com.liangpu.udf.RegexpCountUdf` | `GenericUDF` | 2/3 参 |
-| 7 | `regexp_extract_all` | UDF | `com.liangpu.udf.RegexpExtractAllUdf` | `GenericUDF` | 返回 `StandardListObjectInspector` |
-| 8 | `regexp_substr` | UDF | `com.liangpu.udf.RegexpSubstrUdf` | `GenericUDF` | 2~4 参 |
-| 9 | `regexp_replace_nth` | UDF | `com.liangpu.udf.RegexpReplaceNthUdf` | `GenericUDF` | 3/4 参 |
-| 10 | `find_in_set_ex` | UDF | `com.liangpu.udf.FindInSetExUdf` | `GenericUDF` | 2/3 参 |
+| 注册名（裸名，ADR-8） | 实现类 | 缓冲（AbstractAggregationBuffer） | 关键语义 |
+|---|---|---|---|
+| `any_value` | `AnyValueUDAF` | 单值 + hasValue 标志 | 任选非 NULL 值；全 NULL → NULL |
+| `map_agg` | `MapAggUDAF` | `LinkedHashMap<k,v>` | 重复 key 后者覆盖；NULL key 忽略 |
+| `median` | `MedianUDAF` | 值列表（全量缓冲） | 精确中位数；偶数取均值；支持 double |
+| `arg_max` | `ArgMaxUDAF` | (maxVal, retVal) | 参数序对齐 MC `(v_max, v_ret)`；NULL v_max 忽略 |
+| `arg_min` | `ArgMinUDAF` | (minVal, retVal) | 同上镜像 |
+| `histogram` | `HistogramUDAF` | `Map<k,Long>` | 频次计数 `map<k,bigint>`；NULL 不计 |
+| `multimap_agg` | `MultimapAggUDAF` | `Map<k,List<v>>` | `map<k,array<v>>`；NULL value 保留 |
+| `wm_concat` | `WmConcatUDAF` | (sep, StringBuilder) | sep 自定义、不去重；NULL 忽略 |
 
-通用约定（复用迭代 2/3）：
-- 所有类声明前标注 `@ExpressionDescription`（ADR-11 文档化约定，clion 锚点，usage 直写函数名）；
-- 注册名无前缀（ADR-8，`lpudf` 库即命名空间）；
-- NULL 入参（含 NULL 字面量的 `VoidObjectInspector`）一律放行并返回 NULL（SPIKE 发现点）；
-- 参数类型检查：非预期类型 → `UDFArgumentTypeException`（写法严格，ADR-3）。
+- 类名风格与既有 `StringAggUDAF` 一致（语义化，无 `uda_` 前缀）；**注册名裸名**（ADR-8，仅迭代 1 遗留 `udaf_string_agg` 等带前缀，本轮不加）。
+- 全部继承 `GenericUDAFResolver2`（§9.2 blueprint），`getParameters()` 返回 `TypeInfo[]`、实现 `isWindowing()`；输出 ObjectInspector 由 `initialize` 依据入参类型动态构造（map/array 用 `StandardMapObjectInspector` / `StandardListObjectInspector`）。
+- 每个类必须标注 `@ExpressionDescription(usage=..., arguments=...)`（ADR-11，registry 单测强制校验）。
 
-### 2.2 `src/main/java/com/liangpu/help/` — 注册与帮助（更新 2 文件）
+### 2.2 `builder/` — 构建镜像
 
-- `LpudfFunctionRegistry.java`：`ALL` 追加 10 条（name/database=lpudf/className/kind/usage/arguments），总计 22 条；类注释同步更新；
-- `LpudfExtensions.java`：**无需改动**（builderFor 按 registry 遍历，自动覆盖新函数）。
+无变更（沿用 `maven:3.9-eclipse-temurin-8` + 阿里云源 + .m2 缓存卷）。
 
-### 2.3 `builder/` / `scripts/` — 无本期变更
+### 2.3 `scripts/` — 发布注册
 
-- `scripts/udf-manifest.txt`：追加 10 行（注册名|完整类名），UAT 遍历用；
-- UAT 用例目录 `scripts/uat/`：新增 10 个函数的功能矩阵用例文件。
+`udf-manifest.txt` 追加 8 行 `<裸名>|com.liangpu.udaf.<类名>`；其余脚本无改动。
 
 ## 3. 构建设计
 
-- 命令：`bash build.sh <VER>`（builder 容器内 `mvn clean package`，Java 8）；
-- 依赖策略：与既有一致——spark-sql/spark-hive/hive-exec/hadoop-client 均 provided，产物仅含 UDF 类；
-- 单测闸门：全量 `mvn test` 必须绿（142 基线 + 本期新增 ≈ 90 用例）——**含 api-spec 勾稽**（`jsonFunctionsMatchApiSpec`），故 api-spec 基线恢复（REQ-HELP-5）是构建转绿的前置；
-- 新增依赖：无（10 个函数全部基于 JDK8 + hive-exec 2.3.9 API，无需 fastjson2 等第三方）。
+- `bash build.sh 1.1.5`（容器化，禁止宿主机 mvn，§13.1）：单测闸门 → `target/spark-udf-lp-1.1.5.jar`。
+- 无新依赖（fastjson2 / hive-exec 2.3.9 provided 不变）；构建后 `jar tf` 抽查无 spark/hive 类。
 
 ## 4. 发布与注册设计
 
-- 版本化：HDFS `/udf/spark-udf-lp-<VER>.jar`，升级 = 新版本 + deploy（不可覆盖）；
-- 注入配置：`deploy_spark_udf_lp.sh` 幂等更新 `spark-defaults.conf` 的 `spark.jars` 引用至 `current`，**禁 CREATE/DROP FUNCTION**（ADR-9）；
-- 重启：`docker restart spark` 后单实例加载新类（旧进程无法被 stop-thriftserver.sh 杀掉）；
-- 22 个函数统一注入 `lpudf` 库，metastore 旧记录冗余无害（registry 注入条目优先）。
+- HDFS 版本化路径 `/udf/spark-udf-lp-1.1.5.jar`（新版本号，不可覆盖旧 URI，§10.4 坑 C）。
+- `deploy_spark_udf_lp.sh 1.1.5`：manifest 驱动 **DROP FUNCTION IF EXISTS + CREATE FUNCTION**（§10.4 坑 A）注册 8 个新函数到 lpudf 库。
+- 帮助文本：`LpudfFunctionRegistry.ALL` 追加 8 条（带 ExpressionInfo，usage/arguments）→ `DESC FUNCTION lpudf.<fn>` 可读（§9.4 双轨）。
+- jar 升级后**必须重启 STS**（§10.4 坑 B：classloader 缓存旧类）。
 
 ## 5. 验证设计
 
-| 层级 | 内容 | 位置 |
-|---|---|---|
-| L1 | 每函数单测（正常/NULL/空串/边界/入参错误，≥8 用例）+ `LpudfFunctionRegistryTest` 勾稽绿 | `src/test/java`（新增 `com.liangpu.udf.*UdfTest` + `com.liangpu.udtf.KeyvalueTupleUDTFTest`） |
-| L2 | 构建产物 jar 抽查（`jar tf` 无 spark/hive/hadoop 类） | `bash build.sh` |
-| L3.1 | 注册冒烟：`DESC FUNCTION lpudf.<fn>` 22/22 | `scripts/spark_udf_uat.sh` |
-| L3.2 | 功能矩阵：10 函数 UAT SQL 与 api-spec examples 一致 | `scripts/uat/` + UAT 报告 |
-| L3.3 | 分布式提示：确定性 UDF 下推检查（Spark 日志执行计划） | 集群 UAT |
-| L3.4 | 持久性：`docker restart spark` 后 22 函数可用 | 集群 UAT |
-
-功能矩阵 UAT SQL 直接复用 api-spec examples（同源），结果与 api-spec `result` 字段对照。
+- **L1 单测**（构建闸门，每个 UDAF ≥6 用例）：正常值 / 空输入 / 单行 / 多行 / NULL 忽略 / 全 NULL → NULL / 类型边界（bigint/double/string）/ **PARTIAL1→PARTIAL2 分片 merge 链**（§9.2 强制项）；`eval.aggregate` 驱动 `iterate`/`merge`（§10.2）。
+- **L2 构建检查**：build.sh 全绿 + jar tf 抽查。
+- **L3 集群 UAT**（`spark_udf_uat.sh 1.1.5`）：L3.1 注册冒烟（`SHOW FUNCTIONS IN lpudf` 8 个新函数 + DESC 抽查）；L3.2 功能矩阵（8 函数 × 正常/边界 SQL，结果对齐 api-spec；**对标示例直接复用 `lpudf.emp`（MC 文档示例表，见 inception §3.3.1）**）；L3.3 分布式（merge 链：≥5000 万行多文件大表 + `spark.sql.adaptive.coalescePartitions.enabled=false`，§10.8）；L3.4 持久性（STS 重启后仍可用）。
+- **L4 回归**：既有 22+ 函数 `SHOW FUNCTIONS IN lpudf` 全量核对 + `uda_string_agg` 回归（wm_concat 并存不冲突）。
 
 ## 6. 关键决策记录（ADR）
 
-### 6.1 本期新增
-
 | # | 决策 | 理由 | 日期 |
 |---|---|---|---|
-| ADR-12 | 增强型函数一律换名：`regexp_replace_nth` / `find_in_set_ex` | 同名注入无法覆盖内置裸名解析（SPIKE 实证：裸名 `regexp_replace` 解析到内置全替换）；同名增强造成语义歧义且无法实现 MC 迁移零改动 | 2026-08-27 |
-| ADR-13 | `mask_hash` 自研契约：SHA-256 hex（64 字符小写），不要求与 MC 结果一致 | MC 未公开哈希算法；脱敏场景仅需"不可逆 + 固定 64 字符 + 同输入同输出"，无需跨平台对齐 | 2026-08-27 |
-| ADR-14 | URL 编解码采用 JDK `URLEncoder`/`URLDecoder`（x-www-form-urlencoded），禁止手工实现 | POC 实证：手工按 char 直编非 ASCII 产出错误字节序列；JDK 实现与 MC 契约（空格→`+`、UTF-8 字节编码）一致 | 2026-08-27 |
-| ADR-15 | `regexp_extract_all` 返回 `ArrayType`（`StandardListObjectInspector`）可行 | SPIKE 实证：`local[1]` 引擎注册 + SELECT 输出 `[1,2,3]`、NULL→NULL、空数组、DESC 显示均正常；风险消除 | 2026-08-27 |
-
-### 6.2 沿用（非新增，引用既有 ADR）
-
-- **ADR-3 边界总则**：数据宽容（非法输入→NULL/0 行）、写法严格（参数写法错误→抛错）；`url_decode` 非法百分号序列按数据问题 → NULL。
-- **ADR-8 命名**：注册名无前缀，MC 原生名；`lpudf` 库即命名空间。
-- **ADR-9 会话级注入**：`spark.sql.extensions` 注入，禁 CREATE/DROP。
-- **ADR-11 文档化**：`@ExpressionDescription` + 帮助三件套，api-spec 唯一事实来源。
+| ADR-12 | 本轮 8 个函数**注册名用裸名**（`any_value` 等），不用 `uda_` 前缀 | 对齐既有 ADR-8（json/string 均裸名，MC 原生名）；仅迭代 1 遗留带前缀；修正立项阶段 uda_* 笔误 | 2026-08-27 |
+| ADR-13 | `wm_concat` **新增**（不去重、sep 自定义），不修改 `uda_string_agg` 签名 | 两者语义不同（string_agg=去重+字典序+逗号，确定性）；改已发布签名破坏兼容性 | 2026-08-27 |
+| ADR-14 | `wm_concat` 分布式拼接：缓冲存 (sep, 串)；iterate 时非首值先 append 当前行 sep；**merge 时 `A.buf + B.sep + B.buf`** | 常量 sep 时与 MC 完全一致；列值 sep 时语义文档声明（建议常量）；避免 merge 阶段拿不到 sep 的问题 | 2026-08-27 |
+| ADR-15 | `arg_max(v_max, v_ret)` / `arg_min(v_min, v_ret)` 参数序对齐 MC（先比较列后返回列），与 Spark `max_by(v_ret, v_max)` 反序并存 | MC 用户迁移零成本；同名同参序 | 2026-08-27 |
+| ADR-16 | `median` 采用**精确中位数**（全量缓冲排序，偶数取均值），支持 double | MC 语义对齐；文档注明大输入内存风险与 `percentile_approx` 替代 | 2026-08-27 |
+| ADR-17 | `histogram` 输出 `map<k,bigint>` 频次计数 | 与 Spark `histogram_numeric`（数值分箱 array<struct<bin,count>>）语义区分，对齐 MC | 2026-08-27 |
+| ADR-18 | `map_agg` 重复 key 后者覆盖；`multimap_agg` NULL key 忽略、NULL value 保留 | 对齐 MC 文档语义 | 2026-08-27 |
 
 ## 7. 风险与对策
 
 | 风险 | 状态 | 结论/对策 |
 |---|---|---|
-| UDF 返回 ArrayType 注册/输出异常 | **已消除** | SPIKE 实证（inception §4.3），实现按 SPIKE 验证路径 |
-| 同名函数解析冲突 | **已消除** | SPIKE 实证裸名解析内置 → 换名方案（ADR-12） |
-| URL 编码契约偏差 | **已消除** | POC 对照 JDK 行为与 x-www-form-urlencoded 契约（inception §4.2-A） |
-| `regexp_replace_nth` 后向引用/`$` 误解析 | 已收敛 | POC 实证实现要点：`repl` 原样传 `appendReplacement`、非命中段 `sb.append(m.group())`（inception §4.2-B） |
-| api-spec 基线红阻塞构建 | 已知 | REQ-HELP-5 恢复 12 个已有函数条目后勾稽转绿（前置项） |
-| `keyvalue` 边界语义（空段/分隔符相邻）与 MC 细微差异 | 中 | 单测锁定契约；UAT 功能矩阵对照 api-spec 验收；差异不影响主场景 |
-| 22 函数注入性能/启动影响 | 低 | 注册条目仅元数据（22 条），无实例化成本，与迭代 3 12 条同机制 |
+| `median` 全量缓冲在大输入下 OOM | 待验证 | 文档声明适用范围与 `percentile_approx` 替代；UAT 大表实测观察（可降级为近似实现） |
+| `wm_concat` 列值 sep 时分布式结果不确定 | 已决策 | ADR-14 语义（分片内各自 sep、分片间后分片 sep）；文档声明 sep 建议常量 |
+| map/array 类型 ObjectInspector 序列化（terminatePartial）跨节点不一致 | 待验证 | 单测 merge 链强制覆盖；L3.3 大表实测 |
+| `histogram`/`multimap_agg` 返回值类型复杂（map 套 array），Spark 类型系统兼容 | 待验证 | initialize 动态构造 ObjectInspector；UAT 验证 SELECT 返回可被 SQL 消费 |
+| 帮助文本遗漏（漏登记 registry） | 已控制 | REQ-HELP-1 验收：registryTest 三勾稽用例（registryCoversAllFunctions / everyEntryHasUsableMetadata）+ UAT DESC 抽查（§9.4） |
+| 注册名与 ADR-8 不一致（uda_* 前缀） | 已修正 | ADR-12 固化裸名；manifest/registry/registryTest/api-spec 四处同步（S1.3 注册三连 + S0.7 契约） |

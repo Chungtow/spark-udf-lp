@@ -7,20 +7,20 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * lpudf 全部 22 个函数的帮助信息清单（迭代 4：desc function 支持）。
+ * lpudf 全部 30 个函数的帮助信息清单（迭代 5：聚合函数族）。
  *
  * <p>帮助文本与 {@code specs/api-spec.yaml} 各函数条目 description 为同一事实来源（REQ-HELP-5），
  * 由 {@code LpudfFunctionRegistryTest} 勾稽校验。</p>
  *
  * <p>覆盖范围：迭代 1 示例 3 个（udf_prefix / udaf_string_agg / udtf_split_rows）+ 迭代 2 JSON 9 个
- * + 迭代 4 字符串处理 10 个。</p>
+ * + 迭代 4 字符串处理 10 个 + 迭代 5 聚合函数 8 个。</p>
  */
 public final class LpudfFunctionRegistry {
 
     private LpudfFunctionRegistry() {
     }
 
-    /** 全部 22 个函数描述条目。 */
+    /** 全部 30 个函数描述条目。 */
     public static final List<LpudfFunction> ALL = Collections.unmodifiableList(Arrays.asList(
             // ---- 迭代 1 示例（3 个）----
             // 注: udf_prefix 迭代 1 曾注册于 default 库（无库名 CREATE FUNCTION），
@@ -117,7 +117,41 @@ public final class LpudfFunctionRegistry {
             new LpudfFunction("find_in_set_ex", "lpudf",
                     "com.liangpu.udf.FindInSetExUdf", Kind.UDF,
                     "find_in_set_ex(str, str_list[, delimiter]) - 返回 str 在 str_list 中的位置（1-based）；找不到返回 0；支持第 3 参自定义分隔符（默认逗号）；str 或 str_list 为 NULL 返回 0。",
-                    "str - 要查找的字符串\nstr_list - 由分隔符连接的元素列表，如 'a,b,c'\ndelimiter - 自定义分隔符（可选，默认逗号）")
+                    "str - 要查找的字符串\nstr_list - 由分隔符连接的元素列表，如 'a,b,c'\ndelimiter - 自定义分隔符（可选，默认逗号）"),
+
+            // ---- 迭代 5 聚合函数（8 个，ADR-8 无前缀注册名）----
+            new LpudfFunction("any_value", "lpudf",
+                    "com.liangpu.udaf.AnyValueUDAF", Kind.UDAF,
+                    "any_value(col) - 任选组内一个非 NULL 值返回；全 NULL 或空组返回 NULL。",
+                    "col - 基础类型的输入列，NULL 值被忽略"),
+            new LpudfFunction("map_agg", "lpudf",
+                    "com.liangpu.udaf.MapAggUDAF", Kind.UDAF,
+                    "map_agg(key, value) - 将两列聚合为 Map：key 为第一个参数，value 为第二个参数；重复 key 后者覆盖，NULL key 忽略，NULL value 保留。",
+                    "key - 作为 Map key 的列（基础类型），NULL 所在行被忽略\nvalue - 作为 Map value 的列（基础类型），NULL 保留"),
+            new LpudfFunction("median", "lpudf",
+                    "com.liangpu.udaf.MedianUDAF", Kind.UDAF,
+                    "median(col) - 返回数值列的中位数（精确）：排序后取中间值，偶数个取中间两值均值，NULL 忽略，全 NULL 或空组返回 NULL。",
+                    "col - 数值列（BIGINT/DOUBLE），NULL 被忽略"),
+            new LpudfFunction("arg_max", "lpudf",
+                    "com.liangpu.udaf.ArgMaxUDAF", Kind.UDAF,
+                    "arg_max(v_max, v_ret) - 返回 v_max 取到最大值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。",
+                    "v_max - 用于比较取最大值的列（基础类型），NULL 所在行被忽略\nv_ret - v_max 最大时返回的关联列值（基础类型）"),
+            new LpudfFunction("arg_min", "lpudf",
+                    "com.liangpu.udaf.ArgMinUDAF", Kind.UDAF,
+                    "arg_min(v_min, v_ret) - 返回 v_min 取到最小值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。",
+                    "v_min - 用于比较取最小值的列（基础类型），NULL 所在行被忽略\nv_ret - v_min 最小时返回的关联列值（基础类型）"),
+            new LpudfFunction("histogram", "lpudf",
+                    "com.liangpu.udaf.HistogramUDAF", Kind.UDAF,
+                    "histogram(col) - 统计列值频次，返回 Map（key 为输入值，value 为出现次数 bigint）；NULL 不计入，空组返回空 Map。",
+                    "col - 基础类型的输入列，NULL 不计入"),
+            new LpudfFunction("multimap_agg", "lpudf",
+                    "com.liangpu.udaf.MultimapAggUDAF", Kind.UDAF,
+                    "multimap_agg(key, value) - 将两列聚合为 Multimap（Map<k, Array<v>>）：key 为第一个参数，value 为第二个参数；NULL key 忽略，NULL value 保留进数组。",
+                    "key - 作为 Map key 的列（基础类型），NULL 所在行被忽略\nvalue - 作为数组元素的列（基础类型），NULL 保留进数组"),
+            new LpudfFunction("wm_concat", "lpudf",
+                    "com.liangpu.udaf.WmConcatUDAF", Kind.UDAF,
+                    "wm_concat(sep, col) - 按分隔符 sep 连接组内字符串（不去重、不排序），NULL 忽略，全 NULL 或空组返回 NULL；sep 建议为常量。",
+                    "sep - 连接分隔符（建议常量）\ncol - 待连接的字符串列（基础类型），NULL 被忽略")
     ));
 
     /** 按注册名查找条目（不含库名，仅匹配 name），未找到返回 null。 */

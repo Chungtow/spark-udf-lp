@@ -501,3 +501,143 @@ functions:
         result: "2"
       - sql: "SELECT lpudf.find_in_set_ex('b', 'a;b;c', ';')"
         result: "2"
+  any_value:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.AnyValueUDAF
+    description: 任选组内一个非 NULL 值返回；全 NULL 或空组返回 NULL。
+    parameters:
+      - name: col
+        type: any
+        required: true
+        description: 基础类型的输入列，NULL 值被忽略
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.any_value(job) FROM lpudf.emp"
+        result: "非 NULL 值之一（非确定性）"
+  map_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MapAggUDAF
+    description: 将两列聚合为 Map：key 为第一个参数，value 为第二个参数；重复 key 后者覆盖，NULL key 忽略，NULL value 保留。
+    parameters:
+      - name: key
+        type: any
+        required: true
+        description: 作为 Map key 的列（基础类型），NULL 所在行被忽略
+      - name: value
+        type: any
+        required: true
+        description: 作为 Map value 的列（基础类型），NULL 保留
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT lpudf.map_agg(deptno, ename) FROM lpudf.emp GROUP BY deptno"
+        result: "Map<deptno, ename>（重复 deptno 取后者）"
+  median:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MedianUDAF
+    description: 返回数值列的中位数（精确）：排序后取中间值，偶数个取中间两值均值，NULL 忽略，全 NULL 或空组返回 NULL。
+    parameters:
+      - name: col
+        type: numeric
+        required: true
+        description: 数值列（BIGINT/DOUBLE），NULL 被忽略
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.median(sal) FROM lpudf.emp"
+        result: "3000（示例；按组内实际数据）"
+  arg_max:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.ArgMaxUDAF
+    description: 返回 v_max 取到最大值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。
+    parameters:
+      - name: v_max
+        type: any
+        required: true
+        description: 用于比较取最大值的列（基础类型），NULL 所在行被忽略
+      - name: v_ret
+        type: any
+        required: true
+        description: v_max 最大时返回的关联列值（基础类型）
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.arg_max(sal, ename) FROM lpudf.emp"
+        result: "薪水最高员工的姓名"
+  arg_min:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.ArgMinUDAF
+    description: 返回 v_min 取到最小值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。
+    parameters:
+      - name: v_min
+        type: any
+        required: true
+        description: 用于比较取最小值的列（基础类型），NULL 所在行被忽略
+      - name: v_ret
+        type: any
+        required: true
+        description: v_min 最小时返回的关联列值（基础类型）
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.arg_min(sal, ename) FROM lpudf.emp"
+        result: "薪水最低员工的姓名"
+  histogram:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.HistogramUDAF
+    description: 统计列值频次，返回 Map（key 为输入值，value 为出现次数 bigint）；NULL 不计入，空组返回空 Map。
+    parameters:
+      - name: col
+        type: any
+        required: true
+        description: 基础类型的输入列，NULL 不计入
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT lpudf.histogram(job) FROM lpudf.emp"
+        result: "Map<job, 出现次数>"
+  multimap_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MultimapAggUDAF
+    description: 将两列聚合为 Multimap（Map<k, Array<v>>）：key 为第一个参数，value 为第二个参数；NULL key 忽略，NULL value 保留进数组。
+    parameters:
+      - name: key
+        type: any
+        required: true
+        description: 作为 Map key 的列（基础类型），NULL 所在行被忽略
+      - name: value
+        type: any
+        required: true
+        description: 作为数组元素的列（基础类型），NULL 保留进数组
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT deptno, lpudf.multimap_agg(deptno, ename) FROM lpudf.emp GROUP BY deptno"
+        result: "Map<deptno, Array<ename>>"
+  wm_concat:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.WmConcatUDAF
+    description: 按分隔符 sep 连接组内字符串（不去重、不排序），NULL 忽略，全 NULL 或空组返回 NULL；sep 建议为常量。
+    parameters:
+      - name: sep
+        type: string
+        required: true
+        description: 连接分隔符（建议常量）
+      - name: col
+        type: any
+        required: true
+        description: 待连接的字符串列（基础类型），NULL 被忽略
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT deptno, lpudf.wm_concat(',', ename) FROM lpudf.emp GROUP BY deptno"
+        result: "逗号分隔的姓名列表"
