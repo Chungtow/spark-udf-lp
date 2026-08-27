@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class LpudfFunctionRegistryTest {
 
-    /** 全部 22 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON + 迭代 4 的 10 个字符串处理）。 */
+    /** 全部 30 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON + 迭代 4 的 10 个字符串 + 迭代 5 的 8 个聚合）。 */
     private static final Set<String> EXPECTED_NAMES = new HashSet<>(Arrays.asList(
             "udf_prefix", "udaf_string_agg", "udtf_split_rows",
             "json_valid", "json_extract", "json_length", "json_type",
@@ -33,14 +33,16 @@ public class LpudfFunctionRegistryTest {
             "json_explode",
             "keyvalue", "keyvalue_tuple", "url_encode", "url_decode", "mask_hash",
             "regexp_count", "regexp_extract_all", "regexp_substr",
-            "regexp_replace_nth", "find_in_set_ex"));
+            "regexp_replace_nth", "find_in_set_ex",
+            "any_value", "map_agg", "median", "arg_max", "arg_min",
+            "histogram", "multimap_agg", "wm_concat"));
 
     @Test
     public void registryCoversAllFunctions() {
         Set<String> actual = LpudfFunctionRegistry.ALL.stream()
                 .map(f -> f.name)
                 .collect(Collectors.toSet());
-        assertEquals("帮助信息清单应覆盖全部 22 个函数（REQ-HELP-5）", EXPECTED_NAMES, actual);
+        assertEquals("帮助信息清单应覆盖全部 30 个函数（REQ-HELP-5）", EXPECTED_NAMES, actual);
     }
 
     @Test
