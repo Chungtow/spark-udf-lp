@@ -7,19 +7,20 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * lpudf 全部 12 个函数的帮助信息清单（迭代 3：desc function 支持）。
+ * lpudf 全部 22 个函数的帮助信息清单（迭代 4：desc function 支持）。
  *
- * <p>帮助文本与 {@code specs/api-spec.yaml} 各函数条目 description 为同一事实来源（REQ-HELP-4），
+ * <p>帮助文本与 {@code specs/api-spec.yaml} 各函数条目 description 为同一事实来源（REQ-HELP-5），
  * 由 {@code LpudfFunctionRegistryTest} 勾稽校验。</p>
  *
- * <p>覆盖范围：迭代 1 示例 3 个（udf_prefix / udaf_string_agg / udtf_split_rows）+ 迭代 2 JSON 9 个。</p>
+ * <p>覆盖范围：迭代 1 示例 3 个（udf_prefix / udaf_string_agg / udtf_split_rows）+ 迭代 2 JSON 9 个
+ * + 迭代 4 字符串处理 10 个。</p>
  */
 public final class LpudfFunctionRegistry {
 
     private LpudfFunctionRegistry() {
     }
 
-    /** 全部 12 个函数描述条目。 */
+    /** 全部 22 个函数描述条目。 */
     public static final List<LpudfFunction> ALL = Collections.unmodifiableList(Arrays.asList(
             // ---- 迭代 1 示例（3 个）----
             // 注: udf_prefix 迭代 1 曾注册于 default 库（无库名 CREATE FUNCTION），
@@ -74,7 +75,49 @@ public final class LpudfFunctionRegistry {
             new LpudfFunction("json_explode", "lpudf",
                     "com.liangpu.udtf.JsonExplodeUDTF", Kind.UDTF,
                     "json_explode(json) - 将 JSON 数组/对象展开为多行（固定输出两列 key, value）：数组每元素一行 key 为 NULL，对象每键一行；NULL/非法 JSON/非数组对象输出 0 行。",
-                    "json - JSON 数组或对象文本")
+                    "json - JSON 数组或对象文本"),
+
+            // ---- 迭代 4 字符串处理函数（10 个，ADR-8 无前缀注册名）----
+            new LpudfFunction("keyvalue", "lpudf",
+                    "com.liangpu.udf.KeyvalueUdf", Kind.UDF,
+                    "keyvalue(str, key[, split1, split2]) - 从半结构化 kv 串中提取指定 key 的值，2 参用默认分隔符（& 与 =），4 参自定义 split1/split2；key 不存在返回 NULL。",
+                    "str - 半结构化字符串，如 'k1=v1&k2=v2'\nkey - 要提取的 key 名（2 参形式第 2 参）\nsplit1 - 键值对分隔符（4 参形式，默认 &）\nsplit2 - key/value 分隔符（4 参形式，默认 =）"),
+            new LpudfFunction("keyvalue_tuple", "lpudf",
+                    "com.liangpu.udtf.KeyvalueTupleUDTF", Kind.UDTF,
+                    "keyvalue_tuple(str, split1, split2, key1, key2, ...) - 半结构化 kv 串多键一次提取（UDTF）：每 key 一列，列序与参数一致，找不到的 key 为 NULL；str 为 NULL 或非 kv 结构输出 0 行。",
+                    "str - 半结构化字符串，如 'k1=v1&k2=v2'\nsplit1 - 键值对分隔符，如 '&'\nsplit2 - key/value 分隔符，如 '='\nkey1..keyN - 至少 1 个 key（第 4 参起），输出一列对应一个 key"),
+            new LpudfFunction("url_encode", "lpudf",
+                    "com.liangpu.udf.UrlEncodeUdf", Kind.UDF,
+                    "url_encode(str) - URL 百分号编码（x-www-form-urlencoded）：空格→+、-_.* 保留、~→%7E、非 ASCII 按 UTF-8 字节编码。",
+                    "str - 待编码字符串"),
+            new LpudfFunction("url_decode", "lpudf",
+                    "com.liangpu.udf.UrlDecodeUdf", Kind.UDF,
+                    "url_decode(str) - URL 百分号解码（url_encode 逆操作）：+→空格、%XX 按 UTF-8 还原；非法百分号序列返回 NULL。",
+                    "str - 待解码字符串"),
+            new LpudfFunction("mask_hash", "lpudf",
+                    "com.liangpu.udf.MaskHashUdf", Kind.UDF,
+                    "mask_hash(str) - 脱敏哈希：SHA-256 十六进制（固定 64 字符小写），不可逆；NULL 或非字符串类型入参返回 NULL。",
+                    "str - 待脱敏字符串"),
+            new LpudfFunction("regexp_count", "lpudf",
+                    "com.liangpu.udf.RegexpCountUdf", Kind.UDF,
+                    "regexp_count(str, pattern[, fromPos]) - 统计正则匹配次数；fromPos 为起始位置（1-based，默认 1）；无匹配返回 0，fromPos 越界返回 0。",
+                    "str - 源字符串\npattern - 正则表达式（Java Pattern 语法）\nfromPos - 起始匹配位置（1-based，可选，默认 1）"),
+            new LpudfFunction("regexp_extract_all", "lpudf",
+                    "com.liangpu.udf.RegexpExtractAllUdf", Kind.UDF,
+                    "regexp_extract_all(str, pattern[, group]) - 正则全量提取，返回所有匹配子串的 array<string>；group 为捕获组（默认 0 全匹配）；无匹配返回空数组。",
+                    "str - 源字符串\npattern - 正则表达式（Java Pattern 语法）\ngroup - 捕获组索引（可选，默认 0，全匹配）"),
+            new LpudfFunction("regexp_substr", "lpudf",
+                    "com.liangpu.udf.RegexpSubstrUdf", Kind.UDF,
+                    "regexp_substr(str, pattern[, fromPos[, occurrence]]) - 返回正则匹配的子串；fromPos 起始位置（1-based），occurrence 第几次出现；无匹配返回 NULL。",
+                    "str - 源字符串\npattern - 正则表达式（Java Pattern 语法）\nfromPos - 起始匹配位置（可选，默认 1）\noccurrence - 第几次出现（可选，默认 1）"),
+            new LpudfFunction("regexp_replace_nth", "lpudf",
+                    "com.liangpu.udf.RegexpReplaceNthUdf", Kind.UDF,
+                    "regexp_replace_nth(str, pattern, repl[, occurrence]) - 只替换第 nth 次正则匹配（occurrence 默认 1）；repl 支持 \\1 后向引用；匹配次数不足原样返回。",
+                    "str - 源字符串\npattern - 正则表达式（Java Pattern 语法）\nrepl - 替换串，支持 \\1 后向引用\noccurrence - 只替换第几次匹配（可选，默认 1）"),
+            new LpudfFunction("find_in_set_ex", "lpudf",
+                    "com.liangpu.udf.FindInSetExUdf", Kind.UDF,
+                    "find_in_set_ex(str, str_list[, delimiter]) - 返回 str 在 str_list 中的位置（1-based）；找不到返回 0；支持第 3 参自定义分隔符（默认逗号）；str 或 str_list 为 NULL 返回 0。",
+                    "str - 要查找的字符串\nstr_list - 由分隔符连接的元素列表，如 'a,b,c'\ndelimiter - 自定义分隔符（可选，默认逗号）")
     ));
 
     /** 按注册名查找条目（不含库名，仅匹配 name），未找到返回 null。 */

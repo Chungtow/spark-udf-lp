@@ -3,30 +3,96 @@
 # 说明:
 #   - UDF / UDAF / UDTF 非 HTTP 接口，本文件以 OpenAPI 风格 YAML 描述函数签名契约。
 #   - 函数统一注册于 lpudf 库，任意库以 lpudf.<函数名> 全限定引用。
-#   - 生命周期: 与当前分支 `feat/lpudf-help` 开发周期绑定（迭代 3: desc function 帮助信息）；函数契约本身为长期资产，跨周期保留。
-#   - 入参形态: 全部为 Spark STRING（JSON 文本）——Spark 3.3.1 无 JSON 类型，语义对齐 MaxCompute、入参形态适配（design ADR-3）。
-#   - 边界总则（design ADR-3）: 非法 JSON 文本（数据问题）→ NULL / UDTF 0 行；非法 path 语法（写法问题）→ 抛错；
-#     函数内特殊约定（json_contains / json_strip_nulls 的 path 行为）以各条目 description 为准。
-#   - 帮助信息（迭代 3，REQ-HELP-4）: 各函数条目的 description 为 desc function 帮助文本的**唯一事实来源**，
-#     函数类 `@ExpressionDescription` 注解文本与之勾稽一致。
+#   - 生命周期: 与当前分支开发周期绑定，新周期从空模板重新填充。
+#   - 条目格式示例（复制后修改）:
+#     <注册名>:
+#       kind: UDF|UDAF|UDTF
+#       status: released|planned
+#       class: com.liangpu.<udf|udaf|udtf>.<ClassName>
+#       description: <语义描述，含 null/空/边界行为>
+#       parameters:
+#         - name: <参数名>
+#           type: string
+#           required: true|false
+#           description: <参数说明>
+#       returns:
+#         type: string|table
+#         columns:              # type: table 时
+#           - name: <列名>
+#             type: string
+#       examples:
+#         - sql: "SELECT lpudf.<注册名>(...)"
+#           result: "<期望输出>"
 openapi: "3.0.3"
 info:
   title: spark-udf-lp 函数契约
   version: 1.0.0
   description: >
-    Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约——JSON 处理函数系列（对齐 MaxCompute 同名函数）。
+    Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约。
     构建产物发布至 HDFS /udf/，函数注册于 lpudf 库（唯一注册地址）。
-    迭代 3: 函数帮助信息（desc function）以本文件各条目的 description 为唯一事实来源。
+    2026-08-27（迭代 4）：恢复迭代 1~3 的 12 个基线函数条目 + 新增字符串处理 10 个（released，UAT 通过）。
 
 functions:
+  # ---- 迭代 1 基线（3 个，released）----
+  udf_prefix:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.PrefixUdf
+    description: 返回字符串前 4 个字符（示例 UDF）；str 为 NULL 时返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 字符串表达式
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.udf_prefix('abcdef')"
+        result: "abcd"
+  udaf_string_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.StringAggUDAF
+    description: 字符串列聚合去重拼接：按字典序排序、逗号分隔输出，NULL 行忽略。
+    parameters:
+      - name: col
+        type: string
+        required: true
+        description: 待聚合的字符串列
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.udaf_string_agg(col) FROM (SELECT array('b','a','c') AS col) t"
+        result: "a,b,c"
+  udtf_split_rows:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.SplitRowsUDTF
+    description: 字符串按分隔符拆分为多行（单列输出）；NULL/空串无输出，分隔符 NULL/空时默认逗号。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待拆分的字符串
+      - name: delim
+        type: string
+        required: false
+        description: 分隔符（字面量匹配），默认逗号
+    returns:
+      type: table
+      columns:
+        - name: col
+          type: string
+    examples:
+      - sql: "SELECT lpudf.udtf_split_rows('a,b,c') AS col"
+        result: "a / b / c（3 行）"
+
+  # ---- 迭代 2 基线（9 个 JSON 函数，released）----
   json_valid:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonValidUdf
-    description: >
-      校验输入字符串是否为合法 JSON（RFC 8259），返回 true / false。
-      - 合法 JSON（对象/数组/字符串/数字/布尔/null 字面量）→ true；裸词（未加引号的字符串）→ false
-      - SQL NULL 入参 → NULL（数据宽容）
+    description: 校验输入字符串是否为合法 JSON（RFC 8259），合法返回 true，非法返回 false；SQL NULL 入参返回 NULL。
     parameters:
       - name: json
         type: string
@@ -37,26 +103,11 @@ functions:
     examples:
       - sql: "SELECT lpudf.json_valid('{\"a\":1}')"
         result: "true"
-      - sql: "SELECT lpudf.json_valid('[1,2]')"
-        result: "true"
-      - sql: "SELECT lpudf.json_valid('\"abc\"')"
-        result: "true"
-      - sql: "SELECT lpudf.json_valid('abc')"
-        result: "false"
-      - sql: "SELECT lpudf.json_valid('{a:1}')"
-        result: "false"
-      - sql: "SELECT lpudf.json_valid(NULL)"
-        result: "NULL"
-
   json_extract:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonExtractUdf
-    description: >
-      按 JSONPath 提取值，返回 JSON 文本（对齐 MC JSON_EXTRACT；MC 返回 JSON 类型，Spark 侧以 STRING 呈现）。
-      - path 支持子集: $ / $.key / $.k1.k2 / $[n] / $.k[n] / $[n].k / $['key']（ADR-1）
-      - path 合法但目标不存在 → NULL；path 语法非法 → 抛错（写法严格）
-      - 非法 JSON 文本 → NULL（数据宽容）；SQL NULL 入参 → NULL
+    description: 按 JSONPath 提取值并返回 JSON 文本；path 支持 $.key / $[n] / $['key'] 子集，目标不存在返回 NULL，path 语法非法抛错，非法 JSON 返回 NULL。
     parameters:
       - name: json
         type: string
@@ -65,31 +116,17 @@ functions:
       - name: path
         type: string
         required: true
-        description: JSONPath，如 '$.a'、'$.a[0]'
+        description: JSONPath 表达式，如 '$.a'、'$.a[0]'
     returns:
       type: string
     examples:
-      - sql: "SELECT lpudf.json_extract('{\"a\":1,\"b\":2}', '$.a')"
+      - sql: "SELECT lpudf.json_extract('{\"a\":{\"b\":1}}', '$.a.b')"
         result: "1"
-      - sql: "SELECT lpudf.json_extract('{\"a\":{\"b\":3}}', '$.a.b')"
-        result: "3"
-      - sql: "SELECT lpudf.json_extract('[1,2,{\"a\":34}]', '$[2].a')"
-        result: "34"
-      - sql: "SELECT lpudf.json_extract('{\"a\":1,\"b\":2}', '$.c')"
-        result: "NULL"
-      - sql: "SELECT lpudf.json_extract('{\"a.b\":1}', \"$['a.b']\")"
-        result: "1"
-
   json_length:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonLengthUdf
-    description: >
-      返回指定路径下 JSON 数据的长度（对齐 MC JSON_LENGTH）。
-      - JSON 数组 → 元素数；JSON 对象 → 成员数；其它类型（数字/布尔/字符串/JSON null）→ 1
-      - 不递归计算嵌套数组/对象长度
-      - 未指定 path 作用于整个 JSON；path 目标不存在 → NULL；path 语法非法 → 抛错
-      - SQL NULL 入参（json 或 path）→ NULL；非法 JSON 文本 → NULL
+    description: 返回 JSON 数据长度：数组为元素数、对象为成员数、其它类型为 1，不递归计算；未指定 path 时作用于整个 JSON。
     parameters:
       - name: json
         type: string
@@ -98,33 +135,17 @@ functions:
       - name: path
         type: string
         required: false
-        description: JSONPath，省略时作用于整个 JSON
+        description: JSONPath 表达式（可选）
     returns:
-      type: bigint
+      type: integer
     examples:
-      - sql: "SELECT lpudf.json_length('[1,2,3,4,5,6]')"
-        result: "6"
-      - sql: "SELECT lpudf.json_length('{\"k1\":\"v31\",\"k2\":300}')"
-        result: "2"
-      - sql: "SELECT lpudf.json_length('{\"name\":\"John\",\"age\":22,\"skills\":[\"PHP\",\"MySQL\"]}')"
+      - sql: "SELECT lpudf.json_length('[1,2,3]')"
         result: "3"
-      - sql: "SELECT lpudf.json_length('{\"x\":1,\"y\":[1,2]}', '$.y')"
-        result: "2"
-      - sql: "SELECT lpudf.json_length('123')"
-        result: "1"
-      - sql: "SELECT lpudf.json_length('null')"
-        result: "1"
-      - sql: "SELECT lpudf.json_length(NULL)"
-        result: "NULL"
-
   json_type:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonTypeUdf
-    description: >
-      返回 JSON 数据类型名称（对齐 MC JSON_TYPE），返回小写枚举:
-      string / number / boolean / null / object / array。
-      - SQL NULL 入参 → NULL；非法 JSON 文本 → NULL（数据宽容）
+    description: 返回 JSON 数据类型名称（小写）：string / number / boolean / null / object / array。
     parameters:
       - name: json
         type: string
@@ -133,28 +154,13 @@ functions:
     returns:
       type: string
     examples:
-      - sql: "SELECT lpudf.json_type('[{\"a\":1},23]')"
-        result: "array"
-      - sql: "SELECT lpudf.json_type('123')"
-        result: "number"
-      - sql: "SELECT lpudf.json_type('\"123\"')"
-        result: "string"
-      - sql: "SELECT lpudf.json_type('true')"
-        result: "boolean"
-      - sql: "SELECT lpudf.json_type('null')"
-        result: "null"
       - sql: "SELECT lpudf.json_type('{\"a\":1}')"
         result: "object"
-
   json_exists:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonExistsUdf
-    description: >
-      判断 JSONPath 对应的值是否存在（对齐 MC JSON_EXISTS），返回 true / false。
-      - 键存在（含值为 null 的键）→ true；目标不存在 / 数组下标越界 → false
-      - path 语法非法 → 抛错（写法严格）
-      - SQL NULL 入参（json 或 path）→ NULL；非法 JSON 文本 → NULL
+    description: 判断 JSONPath 对应值是否存在，存在返回 true（含值为 null 的键），不存在或数组越界返回 false。
     parameters:
       - name: json
         type: string
@@ -163,32 +169,17 @@ functions:
       - name: path
         type: string
         required: true
-        description: JSONPath，如 '$.a'、'$[2].a'
+        description: JSONPath 表达式
     returns:
       type: boolean
     examples:
-      - sql: "SELECT lpudf.json_exists('{\"a\":1,\"b\":2}', '$.a')"
-        result: "true"
-      - sql: "SELECT lpudf.json_exists('{\"a\":1,\"b\":2}', '$.c')"
-        result: "false"
-      - sql: "SELECT lpudf.json_exists('[1,2,{\"a\":34}]', '$[2].a')"
-        result: "true"
-      - sql: "SELECT lpudf.json_exists('[1,2,3]', '$[5]')"
-        result: "false"
       - sql: "SELECT lpudf.json_exists('{\"a\":null}', '$.a')"
         result: "true"
-
   json_contains:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonContainsUdf
-    description: >
-      判断 JSON 数据是否包含指定元素（对齐 MC JSON_CONTAINS），返回 true / false。
-      - 未指定 path: 递归查找 json 中是否存在与 candidate 深度相等的节点（覆盖数组元素匹配、对象值匹配）
-      - 指定 path: 取 path 节点值，与 candidate 深度相等比较
-      - path 不存在或语法非法 → false（MC 本函数文档特例，与 ADR-3 一般原则不同）
-      - json 或 candidate 为 SQL NULL → NULL；candidate 或 json 为非法 JSON 文本 → NULL
-      - candidate 为 JSON 文本（数字/布尔/字符串须带引号/对象/数组均可）
+    description: 判断 JSON 数据是否包含与 candidate 深度相等的节点（覆盖数组元素/对象值匹配），包含返回 true；path 不存在或语法非法返回 false。
     parameters:
       - name: json
         type: string
@@ -197,38 +188,21 @@ functions:
       - name: candidate
         type: string
         required: true
-        description: 要匹配的 JSON 元素文本（如 '4'、'"abc"'、'{"a":1}'、'true'）
+        description: 要匹配的 JSON 元素文本，如 '4'、'\"abc\"'、'{\"a\":1}'
       - name: path
         type: string
         required: false
-        description: JSONPath，省略时检查整个 JSON
+        description: JSONPath 表达式（可选）
     returns:
       type: boolean
     examples:
-      - sql: "SELECT lpudf.json_contains('[1,2,3,4,5,6,7,8]', '4')"
+      - sql: "SELECT lpudf.json_contains('[1,2,3]', '2')"
         result: "true"
-      - sql: "SELECT lpudf.json_contains('[10,20,30]', '25')"
-        result: "false"
-      - sql: "SELECT lpudf.json_contains('{\"a\":1,\"b\":2,\"c\":{\"d\":4}}', '1', '$.a')"
-        result: "true"
-      - sql: "SELECT lpudf.json_contains('{\"a\":1,\"b\":2,\"c\":{\"d\":4}}', '2', '$.a')"
-        result: "false"
-      - sql: "SELECT lpudf.json_contains('{\"a\":1}', '2', '$.b')"
-        result: "false"
-      - sql: "SELECT lpudf.json_contains('{\"a\":1}', '2', 'b')"
-        result: "false"
-      - sql: "SELECT lpudf.json_contains('{\"a\":\"abc\"}', '\"abc\"', '$.a')"
-        result: "true"
-      - sql: "SELECT lpudf.json_contains(NULL, '1')"
-        result: "NULL"
-
   json_pretty:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonPrettyUdf
-    description: >
-      美化 JSON：增加换行与缩进（对齐 MC JSON_PRETTY 展示格式: 每层 4 空格缩进、键值冒号后无空格）。
-      - SQL NULL 入参 → NULL；非法 JSON 文本 → NULL（数据宽容）
+    description: 美化 JSON：增加换行与缩进（每层 4 空格缩进、键值冒号后无空格）。
     parameters:
       - name: json
         type: string
@@ -237,21 +211,13 @@ functions:
     returns:
       type: string
     examples:
-      - sql: "SELECT lpudf.json_pretty('{\"a\":1,\"b\":2}')"
-        result: "{\n    \"a\":1,\n    \"b\":2\n}"
-
+      - sql: "SELECT lpudf.json_pretty('{\"a\":1}')"
+        result: "{\n    \"a\": 1\n}"
   json_strip_nulls:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.JsonStripNullsUdf
-    description: >
-      递归移除值为 null 的字段/元素（对齐 MC JSON_STRIP_NULLS），返回处理后的 JSON 文本。
-      - 参数: json 必填；include_arrays 默认 true（删除数组内 null）；remove_empty 默认 false（删除后是否移除空对象/空数组）；
-        path 仅限第 4 参（仅处理该路径下）
-      - JSON null 输入 → 返回 "null"；移除后无内容 → 返回 "null"
-      - json / include_arrays / remove_empty 为 SQL NULL → NULL
-      - path 为 NULL 或无效 → 原样返回 json（不做处理）
-      - 非法 JSON 文本 → NULL（数据宽容）
+    description: 递归移除值为 null 的字段/元素；include_arrays 默认 true，remove_empty 默认 false，path 仅限第 4 参。
     parameters:
       - name: json
         type: string
@@ -260,39 +226,25 @@ functions:
       - name: include_arrays
         type: boolean
         required: false
-        description: 是否删除数组内的 null 值，默认 true
+        description: 是否删除数组内 null（可选，默认 true）
       - name: remove_empty
         type: boolean
         required: false
-        description: 删除 null 后是否删除空对象/空数组，默认 false
+        description: 删除后是否移除空对象/空数组（可选，默认 false）
       - name: path
         type: string
         required: false
-        description: 仅处理该 JSONPath 下的 null（必须作为第 4 个参数传入）
+        description: JSONPath，仅处理该路径下的 null（必须作为第 4 参）
     returns:
       type: string
     examples:
-      - sql: "SELECT lpudf.json_strip_nulls('[1,null,2,null]')"
-        result: "[1,2]"
-      - sql: "SELECT lpudf.json_strip_nulls('[1,null,2,null]', false)"
-        result: "[1,null,2,null]"
-      - sql: "SELECT lpudf.json_strip_nulls('{\"a\":{\"b\":{\"c\":null}},\"d\":[null],\"e\":[],\"f\":1}', false, true)"
-        result: "{\"d\":[null],\"e\":[],\"f\":1}"
-      - sql: "SELECT lpudf.json_strip_nulls('{\"a\":{\"b\":{\"c\":null}},\"d\":[null],\"e\":[],\"f\":1}', true, true)"
-        result: "{\"f\":1}"
-      - sql: "SELECT lpudf.json_strip_nulls('null')"
-        result: "null"
-
+      - sql: "SELECT lpudf.json_strip_nulls('{\"a\":1,\"b\":null}')"
+        result: "{\"a\":1}"
   json_explode:
     kind: UDTF
-    status: planned
+    status: released
     class: com.liangpu.udtf.JsonExplodeUDTF
-    description: >
-      将 JSON 数组或对象展开为多行（对齐 MC JSON_EXPLODE），固定输出两列 (key, value)。
-      - JSON 数组 → 每元素一行，key 为 NULL，value 为元素 JSON 文本
-      - JSON 对象 → 每键一行，key 为键名，value 为对应值 JSON 文本
-      - 按最外层拆解，不递归嵌套；单条输入内部顺序保持
-      - SQL NULL / 非法 JSON 文本 / 合法但非数组或对象 → 0 行（无输出，数据宽容，与 MC 报错有偏差见 ADR-3）
+    description: 将 JSON 数组/对象展开为多行（固定输出两列 key, value）：数组每元素一行 key 为 NULL，对象每键一行；NULL/非法 JSON/非数组对象输出 0 行。
     parameters:
       - name: json
         type: string
@@ -303,35 +255,249 @@ functions:
       columns:
         - name: key
           type: string
-          description: 数组模式为 NULL；对象模式为键名
         - name: value
           type: string
-          description: 元素/值的 JSON 文本
     examples:
-      - sql: "SELECT t.key, t.value FROM (SELECT 1) x LATERAL VIEW json_explode('[1,true,2,{\"a\":456}]') t AS key, value"
-        result: "(NULL,1),(NULL,true),(NULL,2),(NULL,{\"a\":456})"
-      - sql: "SELECT t.key, t.value FROM (SELECT 1) x LATERAL VIEW json_explode('{\"a\":123,\"b\":\"hello\"}') t AS key, value"
-        result: "(a,123),(b,hello)"
+      - sql: "SELECT lpudf.json_explode('{\"a\":1,\"b\":2}') AS (k, v)"
+        result: "a,1 / b,2（2 行）"
 
-# ============================================================================
-# 帮助信息（desc function）契约 —— 迭代 3（REQ-HELP-1~6）
-# ============================================================================
-# 目标: `DESC FUNCTION lpudf.<fn>` 输出与 Spark 内置函数一致的三段式帮助信息。
-#
-# 输出格式（对齐内置函数）:
-#   DESC FUNCTION lpudf.<fn>
-#     Function: <fn>
-#     Class: <全限定类名>
-#     Usage: <usage 文本>
-#   DESC FUNCTION EXTENDED lpudf.<fn>（追加）
-#     Arguments: <arguments 文本>
-#     Examples: <examples 文本>
-#     Note: <note 文本>（如无则省略）
-#
-# 文本规范:
-#   - usage 格式: `<签名> - <一句话语义>`；函数名直接书写（注入路径不经 _FUNC_ 占位替换——
-#     内置函数的 _FUNC_ 由注册宏替换，extensions 注入路径无此机制，故直写函数名，见 design ADR-11）
-#   - 各函数 usage / arguments 文本与上方 functions.<fn>.description 内容一致（唯一事实来源，
-#     由 LpudfFunctionRegistryTest 勾稽函数名；usage 全文人工核对）
-#   - 12 个函数全部覆盖（迭代 1 的 3 个示例 + 迭代 2 的 9 个 JSON 函数）
-#   - 纯元数据增强: 不改变签名 / 行为 / 注册名（REQ-HELP-5）
+  # ---- 迭代 4 新增：字符串处理函数（10 个，released）----
+  keyvalue:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.KeyvalueUdf
+    description: 从半结构化 kv 串中提取指定 key 的值；2 参形式用默认分隔符（& 分隔键值对、= 分隔 key/value），4 参形式自定义 split1/split2；key 不存在返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 半结构化字符串，如 'k1=v1&k2=v2'
+      - name: key
+        type: string
+        required: true
+        description: 要提取的 key 名（2 参形式第 2 参）
+      - name: split1
+        type: string
+        required: false
+        description: 键值对分隔符（4 参形式，默认 &）
+      - name: split2
+        type: string
+        required: false
+        description: key/value 分隔符（4 参形式，默认 =）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.keyvalue('k1=v1&k2=v2', 'k2')"
+        result: "v2"
+      - sql: "SELECT lpudf.keyvalue('k1:v1;k2:v2', ';', ':', 'k2')"
+        result: "v2"
+  keyvalue_tuple:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.KeyvalueTupleUDTF
+    description: 半结构化 kv 串多键一次提取（UDTF）：每 key 一列输出，列序与参数一致，找不到的 key 为 NULL；str 为 NULL 或非 kv 结构输出 0 行。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 半结构化字符串，如 'k1=v1&k2=v2'
+      - name: split1
+        type: string
+        required: true
+        description: 键值对分隔符，如 '&'
+      - name: split2
+        type: string
+        required: true
+        description: key/value 分隔符，如 '='
+      - name: key1..keyN
+        type: string
+        required: true
+        description: 至少 1 个 key（可变参数，第 4 参起），输出一列对应一个 key
+    returns:
+      type: table
+      columns:
+        - name: key1..keyN
+          type: string
+    examples:
+      - sql: "SELECT lpudf.keyvalue_tuple('k1=v1&k2=v2', '&', '=', 'k1', 'k2') AS (k1, k2)"
+        result: "v1,v2（1 行 2 列）"
+  url_encode:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.UrlEncodeUdf
+    description: URL 百分号编码（application/x-www-form-urlencoded）：空格→+、-_. 保留、* 不编码、~→%7E、非 ASCII 按 UTF-8 字节编码；NULL 返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待编码字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.url_encode('a b')"
+        result: "a+b"
+      - sql: "SELECT lpudf.url_encode('中')"
+        result: "%E4%B8%AD"
+  url_decode:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.UrlDecodeUdf
+    description: URL 百分号解码（url_encode 逆操作）：+→空格、%XX 按 UTF-8 还原；非法百分号序列（数据问题）返回 NULL；NULL 返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待解码字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.url_decode('a+b')"
+        result: "a b"
+      - sql: "SELECT lpudf.url_decode('%E4%B8%AD')"
+        result: "中"
+  mask_hash:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.MaskHashUdf
+    description: 脱敏哈希：对字符串做不可逆哈希，输出固定 64 字符小写十六进制（SHA-256）；NULL 或非字符串类型入参返回 NULL（算法与 MC 不要求结果一致）。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待脱敏字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.mask_hash('abc')"
+        result: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  regexp_count:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpCountUdf
+    description: 统计正则匹配次数；可选起始位置 fromPos（1-based）；无匹配返回 0，fromPos 越界不抛错返回 0；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: fromPos
+        type: integer
+        required: false
+        description: 起始匹配位置（1-based，默认 1）
+    returns:
+      type: integer
+    examples:
+      - sql: "SELECT lpudf.regexp_count('a1b2c3', '[0-9]')"
+        result: "3"
+      - sql: "SELECT lpudf.regexp_count('a1b2c3', '[0-9]', 3)"
+        result: "2"
+  regexp_extract_all:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpExtractAllUdf
+    description: 正则全量提取：返回所有匹配子串的 array<string>；可选 group 指定提取组（默认 0 全匹配）；无匹配返回空数组；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: group
+        type: integer
+        required: false
+        description: 捕获组索引（默认 0，全匹配）
+    returns:
+      type: array<string>
+    examples:
+      - sql: "SELECT lpudf.regexp_extract_all('a1b2c3', '[0-9]')"
+        result: "[\"1\",\"2\",\"3\"]"
+  regexp_substr:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpSubstrUdf
+    description: 返回正则匹配的子串；可选起始位置 fromPos（1-based）与出现次数 occurrence；无匹配返回 NULL；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: fromPos
+        type: integer
+        required: false
+        description: 起始匹配位置（1-based，默认 1）
+      - name: occurrence
+        type: integer
+        required: false
+        description: 第几次出现（默认 1）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.regexp_substr('abc123def456', '[0-9]+')"
+        result: "123"
+      - sql: "SELECT lpudf.regexp_substr('abc123def456', '[0-9]+', 1, 2)"
+        result: "456"
+  regexp_replace_nth:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpReplaceNthUdf
+    description: 只替换第 nth 次正则匹配（MC regexp_replace occurrence 增强，换名避免与内置冲突）；repl 支持 \\1 后向引用；超出匹配次数原样返回；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: repl
+        type: string
+        required: true
+        description: 替换串，支持 \\1 后向引用（原样传入 appendReplacement）
+      - name: occurrence
+        type: integer
+        required: false
+        description: 只替换第几次匹配（默认 1）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.regexp_replace_nth('abc123def456', '[0-9]+', 'X')"
+        result: "abcXdef456"
+      - sql: "SELECT lpudf.regexp_replace_nth('abc123def456', '[0-9]+', 'X', 2)"
+        result: "abc123defX"
+  find_in_set_ex:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.FindInSetExUdf
+    description: 返回 str 在 str_list（分隔符列表）中的位置（1-based）；找不到返回 0；支持第 3 参自定义分隔符（默认逗号，与内置 find_in_set 一致）；str 或 str_list 为 NULL 返回 0。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 要查找的字符串
+      - name: str_list
+        type: string
+        required: true
+        description: 由分隔符连接的元素列表，如 'a,b,c'
+      - name: delimiter
+        type: string
+        required: false
+        description: 自定义分隔符（默认逗号）
+    returns:
+      type: integer
+    examples:
+      - sql: "SELECT lpudf.find_in_set_ex('b', 'a,b,c')"
+        result: "2"
+      - sql: "SELECT lpudf.find_in_set_ex('b', 'a;b;c', ';')"
+        result: "2"

@@ -23,3 +23,7 @@ specs/inception.md
 
 # 意外创建的本地 Maven 仓库（-Dmaven.repo.local=~/.m2 时波浪号未展开，相对路径落在源码目录）
 ~
+
+# 运行期/验收文档（UAT 测试报告等按日期落盘的本地记录，不入库；
+# 对外正式文档以 specs/ 为准）
+docs/
