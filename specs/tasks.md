@@ -1,9 +1,10 @@
-# Tasks: spark-udf-lp — 任务清单
+# Tasks: spark-udf-lp — 字符串处理函数（迭代 4）任务清单
 
-> 状态: 本期迭代（Draft）
-> 基于 `proposal.md` 需求拆解，design 阶段细化后逐项勾选执行。
+> 状态: 已完成（迭代 4 收尾，UAT 全绿）
+> 基于 `proposal.md`（REQ-UDF-1~9 / REQ-UDTF-1 / REQ-HELP-5 / REQ-BUILD-1）与 `design.md` 拆解。
 > 约定: `- [x]` 已完成，`- [ ]` 待执行。
-> 生命周期: 与当前分支 `feat/lpudf-help` 开发周期绑定；阶段 0/1 为仓库基线历史事实，保留不动。
+> 生命周期: 与当前分支开发周期绑定；阶段 0/1 为仓库基线历史事实，保留不动。
+> 执行顺序: 阶段 2.3（api-spec 基线恢复，构建转绿前置）可先行，其余按 P0 → P1。
 
 ## 阶段 0: 项目骨架（基线，已完成）
 
@@ -18,46 +19,47 @@
 - [x] `lpudf` 库统一注册（唯一注册地址，DROP+CREATE）
 - [x] `scripts/` 移出版本控制（集群耦合，防泄露）
 
-## 阶段 2: 上一周期（迭代 2，9 个 JSON 函数，已合入 dev）
+## 阶段 2: 本期迭代（字符串处理函数，10 个）
 
-- [x] 全部开发任务已勾选完成并经 PR #2 合入 `dev`（详见 dev 分支历史），本期不再重复
+### 2.1 P0 函数（REQ-UDF-1~4 / REQ-UDTF-1）
 
-## 阶段 3: 本期迭代（REQ-HELP-1~6）
+- [x] `keyvalue`（REQ-UDF-1）：`KeyvalueUdf` 实现（2/4 参）+ 单测（2 参默认分隔符 / 4 参自定义 / key 不存在 / 空段 / NULL）
+- [x] `keyvalue_tuple`（REQ-UDTF-1）：`KeyvalueTupleUDTF` 实现（可变 key 多列）+ 单测（多 key / key 缺失→NULL / 非 kv 结构 0 行 / NULL）
+- [x] `url_encode`（REQ-UDF-2）：`UrlEncodeUdf` 实现（JDK URLEncoder）+ 单测（空格→+ / 保留字符 / 中文 UTF-8 / NULL）
+- [x] `url_decode`（REQ-UDF-3）：`UrlDecodeUdf` 实现（JDK URLDecoder + 非法序列→NULL）+ 单测（对称性 / +→空格 / 非法 % / NULL）
+- [x] `mask_hash`（REQ-UDF-4）：`MaskHashUdf` 实现（SHA-256 hex 64 字符）+ 单测（固定长度 / 同输入同输出 / 非字符串→NULL / NULL）
 
-### 3.1 调研与 POC
+### 2.2 P1 函数（REQ-UDF-5~9）
 
-- [x] 反编译 spark-catalyst_2.12-3.3.1.jar：内置函数帮助信息三层链路（注解→注册宏→desc 渲染）
-- [x] 确认 UDF 注册路径限制：`makeExprInfoForHiveFunction` usage 硬编码 null（字节码 offset 34 aconst_null）
-- [x] POC（inception §7.4，临时文件已清理）：
-  - P0 注解对 hive 注册路径不生效（DESC 显示 Usage: N/A.）
-  - P1 `registerFunction(name, info, builder)` 4 参注入可行，覆盖语义=后注册覆盖
-  - P2 `SparkSessionExtensions.injectFunction` 存在且生效；注入条目使同名 CREATE FUNCTION 抛 FunctionAlreadyExistsException
+- [x] `regexp_count`（REQ-UDF-5）：`RegexpCountUdf` 实现（2/3 参 + region 起始位置）+ 单测（全量计数 / fromPos / 越界→0 / NULL）
+- [x] `regexp_extract_all`（REQ-UDF-6）：`RegexpExtractAllUdf` 实现（返回 ArrayType，group 参数）+ 单测（多值 / 贪婪分段 / group 提取 / 空数组 / NULL）
+- [x] `regexp_substr`（REQ-UDF-7）：`RegexpSubstrUdf` 实现（2~4 参 + occurrence）+ 单测（默认 / fromPos / occurrence / 无匹配→NULL / NULL）
+- [x] `regexp_replace_nth`（REQ-UDF-8）：`RegexpReplaceNthUdf` 实现（nth 替换 + `\1` 后向引用）+ 单测（nth / 后向引用 / 超出次数原样返回 / 含 `$` 原串 / NULL）
+- [x] `find_in_set_ex`（REQ-UDF-9）：`FindInSetExUdf` 实现（2/3 参自定义分隔符）+ 单测（位置 / 自定义分隔符 / 找不到→0 / NULL→0）
 
-### 3.2 需求与设计
+### 2.3 帮助信息三件套 + 构建闸门（REQ-HELP-5 / REQ-BUILD-1）
 
-- [x] proposal.md 定稿（REQ-HELP-1~6，含 POC 结论回写）
-- [x] design.md 定稿（ADR-9：injectFunction 注入方案 + ADR-10/11/12）
-- [x] api-spec.yaml 补 desc function 输出契约（帮助文本规范）
+- [x] `specs/api-spec.yaml` 恢复迭代 1~3 的 12 个基线函数条目 + 新增 10 条（共 22 条，status 全部 released）
+- [x] `scripts/udf-manifest.txt` 追加 10 行（注册名|完整类名），总计 22 行
+- [x] `LpudfFunctionRegistry.java` 追加 10 条（usage/arguments 与 api-spec 一致），`registryCoversAllFunctions` 更新为 22 个
+- [x] 全量 `mvn test` 绿（258 用例全过，含 api-spec 勾稽）→ 构建闸门 `bash build.sh 1.1.3` 通过
 
-### 3.3 实现
+## 阶段 3: 验证与回归
 
-- [x] 12 个函数类标注 `@ExpressionDescription`（usage/arguments/note；帮助文本**直写函数名**——注入路径无 `_FUNC_` 占位替换机制）
-- [x] `LpudfFunctionRegistry`：12 个函数描述常量清单（FunctionIdentifier + ExpressionInfo，文本源 api-spec；`udf_prefix` 统一注入 lpudf 库）
-- [x] `LpudfExtensions`（spark.sql.extensions 入口）：injectFunction 注入 12 个函数，builder 用 HiveGenericUDF/HiveUDAFFunction/HiveGenericUDTF 包装
-- [x] L1 单测：描述清单完整性（12 个、usage 非空）+ 注解反射断言 + 扩展类加载冒烟（LpudfFunctionRegistryTest 4 例）
+- [x] L1 单测全绿（构建闸门，`mvn test` 258 全过）
+- [x] L2 构建产物检查（`jar tf` 抽查无 spark/hive/hadoop 类混入）
+- [x] L3.1 集群注册冒烟：`DESC FUNCTION lpudf.<fn>` 22/22 显示帮助
+- [x] L3.2 集群功能矩阵：10 个新函数 UAT SQL 结果与 api-spec examples 一致
+- [x] L3.3 分布式提示：核心函数（`keyvalue` / `regexp_extract_all` / `regexp_replace_nth`）执行计划可下推
+- [x] L3.4 持久性：`docker restart spark` 后 22 个函数仍可用
+- [x] UAT 报告存档：`docs/uat/20260827-spark-udf-lp-UAT测试报告.md`
 
-### 3.4 构建、部署与集群验证
+## 发布流水线（阶段 3 通过后执行）
 
-- [x] `build.sh 1.0.1` 构建通过（142 单测全绿；修复 spark-hive 传递 log4j-1.2-api 2.6.2 降版 log4j-api 问题）
-- [x] `scripts/release_spark_udf_lp.sh 1.0.1` 制品入库（software/spark-udf/）
-- [x] `scripts/deploy_spark_udf_lp.sh 1.0.1` 部署（ADR-9：HDFS 上传 + cp current + 幂等配置 spark-defaults.conf，不再 DROP/CREATE）
-- [x] 重启 STS（坑 B：容器缺 ps 致 stop 无效，`docker restart spark` 整容器重启，单实例加载新配置）
-- [x] L3.1 `DESC FUNCTION lpudf.<fn>` 12/12 显示三段式帮助（Function/Class/Usage）
-- [x] L3.2 `DESC FUNCTION EXTENDED` 抽查 3 个显示 Extended Usage
-- [x] L3.3 功能回归：l32_function_matrix.sql + l32_json_functions.sql 25 例全绿 + L3.4 迭代 1 冒烟 3/3 + L3.5 持久性
-- [x] README 补充帮助信息/注入部署说明；inception.md 变更记录；docs/uat 报告迭代 3 章节
-
-## 阶段 4: 收尾
-
-- [x] commit + push `feat/lpudf-help`
-- [ ] PR 合入 `dev`（评审通过）
+```bash
+bash build.sh <VER>
+bash scripts/release_spark_udf_lp.sh <VER>
+bash scripts/deploy_spark_udf_lp.sh <VER>
+ssh hivespark03 "docker restart spark" && sleep 30
+bash scripts/spark_udf_uat.sh <VER>
+```

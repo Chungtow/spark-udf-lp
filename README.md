@@ -25,14 +25,14 @@ Spark 自定义 UDF（Hive 风格 `GenericUDF`）新项目。构建产物（jar�
     ├── udf-manifest.txt       # UDF 注册清单：注册名|类名（UAT 遍历）
     ├── release_spark_udf_lp.sh # 制品入库 → 父项目 software/spark-udf/
     ├── deploy_spark_udf_lp.sh  # HDFS 上传 + cp current + 幂等配置 spark-defaults.conf（ADR-9，不再 DROP/CREATE）
-    ├── spark_udf_uat.sh        # 集群 UAT（L3，含 DESC FUNCTION 12/12）
+    ├── spark_udf_uat.sh        # 集群 UAT（L3，含 DESC FUNCTION 22/22）
     └── uat/                    # UAT SQL 用例
 ```
 
 ## 快速开始
 
 ```bash
-# 1. 构建（builder 容器内跑单测 + 打包，142 单测为闸门）
+# 1. 构建（builder 容器内跑单测 + 打包，258 单测为闸门）
 bash build.sh 1.0.1                          # 产物 target/spark-udf-lp-1.0.1.jar
 
 # 2. 制品入库（写入父仓库 software/spark-udf/）
@@ -44,7 +44,7 @@ bash scripts/deploy_spark_udf_lp.sh 1.0.1
 # 4. 整容器重启 STS（容器缺 ps，stop-thriftserver.sh 杀不掉旧进程，必须 docker restart spark 才能单实例加载新配置）
 ssh hivespark03 "docker restart spark" && sleep 30
 
-# 5. 集群 UAT（L3，含 DESC FUNCTION 12/12）
+# 5. 集群 UAT（L3，含 DESC FUNCTION 22/22）
 bash scripts/spark_udf_uat.sh 1.0.1
 ```
 
@@ -81,5 +81,5 @@ beeline -u jdbc:hive2://hivespark03:10015/default
 - **关键依赖均 provided**：jar 只含 UDF 类，禁止携带 spark/hive/hadoop 类（构建后 `jar tf` 抽查）；
 - **jar 版本化**：HDFS `/udf/spark-udf-lp-<VER>.jar` 不可覆盖，升级 = 新版本 + `deploy`（deploy 脚本 cp 为 current，配置固定引用 `spark.jars`，升级后**必须** `docker restart spark` 才加载新类）；
 - **注册方式（迭代 3 起，ADR-9）**：函数经 `spark.sql.extensions=...,com.liangpu.help.LpudfExtensions` 会话级注入，**禁止再执行 CREATE/DROP FUNCTION**（注入条目使同名 CREATE 抛 `FunctionAlreadyExistsException`）；metastore 旧记录冗余无害（registry 注入条目优先）；
-- **帮助信息**：注入条目的 help 文本直写函数名（注入路径无 `_FUNC_` 占位替换机制），数据源为 `LpudfFunctionRegistry`（usage/arguments）；12 个函数类上的 `@ExpressionDescription` 注解为文档锚点（注解对注入路径不生效）；
-- 注册名：迭代 1 函数统一 `udf_` 前缀；迭代 2 起新函数**无前缀**（`lpudf` 库即命名空间，用 MC 原生名如 `json_valid`，ADR-8）；12 个函数统一注入 `lpudf` 库（含 udf_prefix，历史 default 库记录冗余无害）。
+- **帮助信息**：注入条目的 help 文本直写函数名（注入路径无 `_FUNC_` 占位替换机制），数据源为 `LpudfFunctionRegistry`（usage/arguments）；22 个函数类上的 `@ExpressionDescription` 注解为文档锚点（注解对注入路径不生效）；
+- 注册名：迭代 1 函数统一 `udf_` 前缀；迭代 2 起新函数**无前缀**（`lpudf` 库即命名空间，用 MC 原生名如 `json_valid`，ADR-8）；22 个函数统一注入 `lpudf` 库（含 udf_prefix，历史 default 库记录冗余无害）。

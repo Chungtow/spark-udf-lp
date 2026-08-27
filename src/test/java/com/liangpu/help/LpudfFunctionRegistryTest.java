@@ -25,19 +25,22 @@ import static org.junit.Assert.assertTrue;
  */
 public class LpudfFunctionRegistryTest {
 
-    /** 全部 12 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON 函数）。 */
+    /** 全部 22 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON + 迭代 4 的 10 个字符串处理）。 */
     private static final Set<String> EXPECTED_NAMES = new HashSet<>(Arrays.asList(
             "udf_prefix", "udaf_string_agg", "udtf_split_rows",
             "json_valid", "json_extract", "json_length", "json_type",
             "json_exists", "json_contains", "json_pretty", "json_strip_nulls",
-            "json_explode"));
+            "json_explode",
+            "keyvalue", "keyvalue_tuple", "url_encode", "url_decode", "mask_hash",
+            "regexp_count", "regexp_extract_all", "regexp_substr",
+            "regexp_replace_nth", "find_in_set_ex"));
 
     @Test
     public void registryCoversAllFunctions() {
         Set<String> actual = LpudfFunctionRegistry.ALL.stream()
                 .map(f -> f.name)
                 .collect(Collectors.toSet());
-        assertEquals("帮助信息清单应覆盖全部 12 个函数（REQ-HELP-1/4）", EXPECTED_NAMES, actual);
+        assertEquals("帮助信息清单应覆盖全部 22 个函数（REQ-HELP-5）", EXPECTED_NAMES, actual);
     }
 
     @Test
@@ -58,12 +61,25 @@ public class LpudfFunctionRegistryTest {
 
     @Test
     public void jsonFunctionsMatchApiSpec() throws IOException {
-        // api-spec.yaml 为帮助文本唯一事实来源（REQ-HELP-4），9 个 JSON 函数名须与其 functions 块一致
+        // api-spec.yaml 为帮助文本唯一事实来源（REQ-HELP-5），JSON 函数名须与其 functions 块一致
         Set<String> specNames = extractFunctionNamesFromApiSpec();
         for (LpudfFunction f : LpudfFunctionRegistry.ALL) {
             if (f.name.startsWith("json_")) {
                 assertTrue("api-spec 缺少函数 " + f.name + "（帮助文本事实来源缺失）", specNames.contains(f.name));
             }
+        }
+    }
+
+    @Test
+    public void iteration4FunctionsMatchApiSpec() throws IOException {
+        // 迭代 4 的 10 个字符串处理函数同样须登记于 api-spec.yaml（REQ-HELP-5）
+        Set<String> specNames = extractFunctionNamesFromApiSpec();
+        Set<String> it4 = new HashSet<>(Arrays.asList(
+                "keyvalue", "keyvalue_tuple", "url_encode", "url_decode", "mask_hash",
+                "regexp_count", "regexp_extract_all", "regexp_substr",
+                "regexp_replace_nth", "find_in_set_ex"));
+        for (String name : it4) {
+            assertTrue("api-spec 缺少函数 " + name + "（帮助文本事实来源缺失）", specNames.contains(name));
         }
     }
 
