@@ -37,7 +37,7 @@ import java.util.List;
         arguments = "col - 数值列（BIGINT/DOUBLE），NULL 被忽略")
 public class MedianUDAF extends AbstractGenericUDAFResolver {
 
-    /** Spark 2.4 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
+    /** Spark 3.3.1 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
     @Override
     public GenericUDAFEvaluator getEvaluator(TypeInfo[] parameters) throws SemanticException {
         return buildEvaluator(parameters);

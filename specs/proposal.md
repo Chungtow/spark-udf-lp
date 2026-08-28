@@ -1,54 +1,51 @@
-# Proposal: spark-udf-lp — 聚合函数族（迭代 5，目标 1.1.5）
+# Proposal: spark-udf-lp — 地理函数族（迭代 6，目标 1.1.8）
 
-> 状态: 草稿（Draft）
-> 来源: `specs/inception.md`（历史事实来源）/ 本期迭代需求
+> 状态: 已定稿（Approved，S0.5 通过）
+> 来源: `specs/inception.md`（历史事实来源，含弯路/坑记录）/ 本期迭代需求
 > 关联: 父项目 `hadoop-cluster-physical`（以 git submodule 挂载）
 > 生命周期: 与当前分支开发周期绑定，新周期从空模板重新填充
 
 ## Goal
 
-对标阿里云 MaxCompute 聚合函数，开发 Spark 3.3.1 缺失的 8 个聚合 UDAF（`any_value` / `map_agg` / `median` / `arg_max` / `arg_min` / `histogram` / `multimap_agg` / `wm_concat`），补齐聚合能力空缺并降低 MC 用户迁移成本，目标版本 1.1.5。
+对标阿里云 MaxCompute 地理函数（ST_* 系列），开发 Spark 3.3.1 缺失的 16 个地理 UDF（`st_geogpoint` / `st_geogfromtext` / `st_geogfromwkb` / `st_astext` / `st_asbinary` / `st_x` / `st_y` / `st_boundingbox` / `st_distance` / `st_dwithin` / `st_contains` / `st_covers` / `st_intersects` / `st_within` / `st_makeline` / `st_makepolygon`），为 MC 用户提供开箱即用的空间计算能力，目标版本 1.1.8。
 
 ## 背景与动机
 
-- 库内 UDAF 仅 `uda_string_agg`（迭代 1）1 个，聚合能力存在明显空缺：取任一样本、构造字典、中位数、极值关联行、值分布计数等高频场景均无直接函数。
-- 采用既有对标法（json/string 同源）：MC 聚合函数文档 39 个 vs Spark 3.3.1 内置（集群实测 24 项），差异 = 候选开发清单（详见 `inception.md` §2/§5）。
-- 约束：Spark 3.3.1 + Hive 2.3.9 API；分布式聚合**不保证组内输入顺序**，所有 UDAF 语义必须对顺序不确定健壮（§9.2/§10.5）。
+- **能力空白**：库内现有 59 个函数（json/string/聚合族），**无任何地理空间函数**；Spark 3.3.1 内置亦无 ST_*（`SHOW FUNCTIONS LIKE '*st*'/'*geo*'` 集群实测复核，inception §2.3），ST_* 生态在 Sedona/GeoSpark 等第三方库。
+- 采用既有对标法（json/string/aggregate 同源）：MC 地理函数文档 16 个 → 集群实测差异 = 候选开发清单（**16 个全部缺失，无排除项**，详见 `inception.md` §2）。
+- 约束：Spark 3.3.1 + Hive 2.3.9 API；**Spark 无 GEOGRAPHY 类型**，地理对象以 STRING(WKT) 为载体（BINARY(WKB) 为二进制接口）；空间关系语义对齐 OGC/DE-9IM（MC 同标准）。
 
 ## Requirements
 
-### 新增函数
+### 新增函数（16 个，全部 UDF，裸名注册 ADR-8）
 
-- **REQ-UDAF-01：`any_value(col)`** — 任选一个非 NULL 值返回；全 NULL 组返回 NULL；空组返回 NULL。
-  - 验收：单测覆盖 多行/全 NULL/混合/单行/空输入；merge 链（PARTIAL1→PARTIAL2）；行为与 MC any_value 一致（任取非 NULL 其一）。
-- **REQ-UDAF-02：`map_agg(k, v)`** — 两列构造 `map<k,v>`；重复 key 后者覆盖；NULL key 忽略；NULL value 保留。
-  - 验收：单测覆盖 正常/重复 key 覆盖/NULL key 忽略/NULL value 保留/空输入；merge 链。
-- **REQ-UDAF-03：`median(col)`** — 数值列精确中位数：排序取中间值，偶数取中间两值均值；NULL 忽略；全 NULL 返回 NULL；支持 double 输入。
-  - 验收：单测覆盖 奇数/偶数/含 NULL/全 NULL/double 精度/空输入；merge 链；文档注明大输入下内存风险与 percentile_approx 替代。
-- **REQ-UDAF-04：`arg_max(v_max, v_ret)`** — 返回 v_max 最大时对应的 v_ret（参数顺序对齐 MC：先比较列后返回列）；NULL v_max 忽略；并列（tie）取其一（顺序不确定 → 文档声明非确定性）；全 NULL 返回 NULL。
-  - 验收：单测覆盖 普通/并列/含 NULL/全 NULL/空输入；merge 链；与 `max_by(v_ret, v_max)` 参数序反证。
-- **REQ-UDAF-05：`arg_min(v_min, v_ret)`** — 同 REQ-UDAF-04 取最小。
-  - 验收：同 REQ-UDAF-04 镜像。
-- **REQ-UDAF-06：`histogram(col)`** — 值分布计数，返回 `map<k,bigint>`；NULL 不计；key 为输入值类型。
-  - 验收：单测覆盖 频次正确/NULL 不计/单值/空输入；merge 链（map 逐键累加）；与 MC histogram 语义一致（区别于 Spark histogram_numeric 数值分箱）。
-- **REQ-UDAF-07：`multimap_agg(k, v)`** — 构造 `map<k,array<v>>`，同 key 多值并入数组；NULL key 忽略；NULL value 保留进数组。
-  - 验收：单测覆盖 多值并入顺序(组内按 iterate 顺序，文档声明不确定)/NULL key/NULL value/空输入；merge 链（数组 concat）。
-- **REQ-UDAF-08：`wm_concat(sep, col)`** — 按 sep 连接字符串（不去重、不排序）；NULL 忽略；sep 为常量或列值；空组/全 NULL 返回 NULL。
-  - 验收：单测覆盖 多行拼接/NULL 忽略/自定义 sep/单行/空输入；merge 链；与 `uda_string_agg`（去重+字典序+逗号）语义并存不冲突。
+- **REQ-GEO-01：`st_geogpoint(lon, lat)`** — 经/纬度构造点（返回 WKT）。lon 超 [-180,180] 按 360° 归一化（270→-90）；lat 超 [-90,90] 报错。
+- **REQ-GEO-02：`st_geogfromtext(wkt)`** — WKT 解析为地理对象。支持 POINT/LINESTRING/POLYGON/EMPTY，不支持 Z/M；`POINT EMPTY` 输出 `GEOMETRYCOLLECTION EMPTY`；非法 WKT 报错。
+- **REQ-GEO-03：`st_geogfromwkb(wkb)`** — WKB 解析为地理对象（返回 WKT）。非法 WKB 报错。
+- **REQ-GEO-04：`st_astext(geog)`** — 地理对象转 WKT。NULL→NULL；空几何→`GEOMETRYCOLLECTION EMPTY`。
+- **REQ-GEO-05：`st_asbinary(geog)`** — 地理对象转 WKB 二进制。NULL→NULL。
+- **REQ-GEO-06/07：`st_x(geog)` / `st_y(geog)`** — 取点对象经/纬度。非 POINT 报错；NULL→NULL。
+- **REQ-GEO-08：`st_boundingbox(geog)`** — 外接矩形 `STRUCT<xmin,ymin,xmax,ymax>`。NULL/空→NULL；平面近似（微小精度差异）。
+- **REQ-GEO-09：`st_distance(g1, g2)`** — 最短距离（米，haversine 球面近似 ~0.01%）。任一 NULL/空→NULL。
+- **REQ-GEO-10：`st_dwithin(g1, g2, dist)`** — 最短距离 ≤ dist（米）→ TRUE。任一 NULL/空→FALSE；dist=0 判断点在多边形内。
+- **REQ-GEO-11：`st_contains(g1, g2)`** — g1 包含 g2 全部点（**不含边界**）。任一 NULL/空→FALSE。
+- **REQ-GEO-12：`st_covers(g1, g2)`** — g1 覆盖 g2 全部点（**含边界**）。任一 NULL/空→FALSE。
+- **REQ-GEO-13：`st_intersects(g1, g2)`** — 有公共点→TRUE（hole 内不算）。任一 NULL/空→FALSE。
+- **REQ-GEO-14：`st_within(g1, g2)`** — g1 全部点在 g2 内（**不含边界**）。任一 NULL/空→FALSE。
+- **REQ-GEO-15：`st_makeline(g1, g2)` / `(array<geog>)`** — 构造线。任一 NULL（含数组元素 NULL）→NULL；两点相同/单元素→退化为 Point；数组 ≥1 元素。
+- **REQ-GEO-16：`st_makepolygon(shell[, holes])`** — 构造多边形。shell ≥3 个不同顶点，首尾不同自动补闭合；任一 NULL（含 holes 元素 NULL）→NULL；空对象报错。
 
-### 函数变更
-
-- 无（不修改已发布函数签名；`wm_concat` 为新增，与 `uda_string_agg` 并存）。
+> 各函数验收锚点与示例 SQL 见 `api-spec.yaml`（S0.7 契约 = 验收基准）。
 
 ### 非函数项
 
-- **REQ-HELP-1：8 个新函数帮助文本登记** — 延续既有帮助机制（§9.4）：`@ExpressionDescription` 标注 + `LpudfFunctionRegistry.ALL` + `api-spec.yaml` 帮助文本同步；`DESC FUNCTION lpudf.<fn>` 必须显示 usage + arguments。
-  - 验收：`LpudfFunctionRegistryTest` 全绿（含 `registryCoversAllFunctions` / `everyEntryHasUsableMetadata`）；UAT L3.1 抽查 DESC 输出含用法与参数。
-- **REQ-REG-1：注册三连同步** — `scripts/udf-manifest.txt` 追加 8 行（`<注册名>|类名`，**裸名对齐 ADR-8**：`any_value`/`map_agg`/`median`/`arg_max`/`arg_min`/`histogram`/`multimap_agg`/`wm_concat`）+ `LpudfFunctionRegistry.ALL` + `LpudfFunctionRegistryTest.EXPECTED_NAMES`。
-  - 验收：S2.2 部署后 `SHOW FUNCTIONS IN lpudf` 可见全部 8 个新函数。
-- **REQ-DOC-1：迭代收尾文档** — Stage 3 前 `docs/inception/20260827-feat-aggregate-functions-聚合函数.md` 存档；Stage 4 用户指南按需。
+- **REQ-HELP-1：16 个新函数帮助文本登记** — `@ExpressionDescription` + `LpudfFunctionRegistry.ALL` + `api-spec.yaml` 三同步；`DESC FUNCTION lpudf.<fn>` 显示 usage + arguments。
+- **REQ-REG-1：注册三连同步** — `scripts/udf-manifest.txt` 追加 16 行（裸名 ADR-8）+ `LpudfFunctionRegistryTest.EXPECTED_NAMES` 同步 30→46。
+- **REQ-DEP-1：jts-core 依赖** — pom 引入 `org.locationtech.jts:jts-core:1.19.0`（compile，shade 打入；POC 已验证可拉取可运行）。
+- **REQ-DOC-1：迭代收尾文档** — Stage 3 前 `docs/inception/20260828-feat-geo-functions-地理函数.md` 存档；Stage 4 用户指南按需。
 
 ## 验收标准
 
-- 与 `tasks.md` 阶段勾选、`api-spec.yaml` 契约对应（S0.7 契约 = 验收基准）。
-- L1 单测全绿（构建闸门，`build.sh`）→ L2 构建产出 `target/spark-udf-lp-1.1.5.jar` → L3 集群 UAT 全绿（L3.1 注册冒烟 / L3.2 功能矩阵含 DESC / L3.3 分布式 merge 链 / L3.4 持久性）。
+- 与 `tasks.md` 阶段勾选、`api-spec.yaml` 契约对应。
+- L1 单测全绿（构建闸门，`build.sh`）→ L2 构建产出 `target/spark-udf-lp-1.1.8.jar` → L3 集群 UAT 全绿（L3.1 注册冒烟 / L3.2 功能矩阵 / L3.3 分布式空间连接 / L3.4 持久性）。
+- 语义锚点：`st_distance(st_geogpoint(0,0), st_geogpoint(1,1)) ≈ 157250`（±100m 容差）；`st_contains` 边界点 FALSE vs `st_covers` 边界点 TRUE；`st_geogpoint(270, 0)` → `POINT (-90 0)`。

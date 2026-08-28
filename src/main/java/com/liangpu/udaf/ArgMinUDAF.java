@@ -34,7 +34,7 @@ import java.io.Serializable;
         arguments = "v_min - 用于比较取最小值的列（基础类型），NULL 所在行被忽略\nv_ret - v_min 最小时返回的关联列值（基础类型）")
 public class ArgMinUDAF extends AbstractGenericUDAFResolver {
 
-    /** Spark 2.4 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
+    /** Spark 3.3.1 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
     @Override
     public GenericUDAFEvaluator getEvaluator(TypeInfo[] parameters) throws SemanticException {
         return buildEvaluator(parameters);

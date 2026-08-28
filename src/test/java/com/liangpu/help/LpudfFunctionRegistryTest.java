@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class LpudfFunctionRegistryTest {
 
-    /** 全部 30 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON + 迭代 4 的 10 个字符串 + 迭代 5 的 8 个聚合）。 */
+    /** 全部 46 个注册名（迭代 1 的 3 个 + 迭代 2 的 9 个 JSON + 迭代 4 的 10 个字符串 + 迭代 5 的 8 个聚合 + 迭代 6 的 16 个地理）。 */
     private static final Set<String> EXPECTED_NAMES = new HashSet<>(Arrays.asList(
             "udf_prefix", "udaf_string_agg", "udtf_split_rows",
             "json_valid", "json_extract", "json_length", "json_type",
@@ -35,14 +35,32 @@ public class LpudfFunctionRegistryTest {
             "regexp_count", "regexp_extract_all", "regexp_substr",
             "regexp_replace_nth", "find_in_set_ex",
             "any_value", "map_agg", "median", "arg_max", "arg_min",
-            "histogram", "multimap_agg", "wm_concat"));
+            "histogram", "multimap_agg", "wm_concat",
+            "st_geogpoint", "st_geogfromtext", "st_geogfromwkb", "st_astext", "st_asbinary",
+            "st_x", "st_y", "st_boundingbox", "st_distance", "st_dwithin",
+            "st_contains", "st_covers", "st_intersects", "st_within",
+            "st_makeline", "st_makepolygon"));
 
     @Test
     public void registryCoversAllFunctions() {
         Set<String> actual = LpudfFunctionRegistry.ALL.stream()
                 .map(f -> f.name)
                 .collect(Collectors.toSet());
-        assertEquals("帮助信息清单应覆盖全部 30 个函数（REQ-HELP-5）", EXPECTED_NAMES, actual);
+        assertEquals("帮助信息清单应覆盖全部 46 个函数（REQ-HELP-5）", EXPECTED_NAMES, actual);
+    }
+
+    @Test
+    public void iteration6GeoFunctionsMatchApiSpec() throws IOException {
+        // 迭代 6 的 16 个地理函数同样须登记于 api-spec.yaml（REQ-HELP-5）
+        Set<String> specNames = extractFunctionNamesFromApiSpec();
+        Set<String> it6 = new HashSet<>(Arrays.asList(
+                "st_geogpoint", "st_geogfromtext", "st_geogfromwkb", "st_astext", "st_asbinary",
+                "st_x", "st_y", "st_boundingbox", "st_distance", "st_dwithin",
+                "st_contains", "st_covers", "st_intersects", "st_within",
+                "st_makeline", "st_makepolygon"));
+        for (String name : it6) {
+            assertTrue("api-spec 缺少函数 " + name + "（帮助文本事实来源缺失）", specNames.contains(name));
+        }
     }
 
     @Test
