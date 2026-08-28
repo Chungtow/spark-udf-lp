@@ -1,0 +1,945 @@
+# spark-udf-lp 函数接口契约（api-spec）
+
+# 说明:
+#   - UDF / UDAF / UDTF 非 HTTP 接口，本文件以 OpenAPI 风格 YAML 描述函数签名契约。
+#   - 函数统一注册于 lpudf 库，任意库以 lpudf.<函数名> 全限定引用。
+#   - 生命周期: 与当前分支开发周期绑定，新周期从空模板重新填充。
+#   - 条目格式示例（复制后修改）:
+#     <注册名>:
+#       kind: UDF|UDAF|UDTF
+#       status: released|planned
+#       class: com.liangpu.<udf|udaf|udtf>.<ClassName>
+#       description: <语义描述，含 null/空/边界行为>
+#       parameters:
+#         - name: <参数名>
+#           type: string
+#           required: true|false
+#           description: <参数说明>
+#       returns:
+#         type: string|table
+#         columns:              # type: table 时
+#           - name: <列名>
+#             type: string
+#       examples:
+#         - sql: "SELECT lpudf.<注册名>(...)"
+#           result: "<期望输出>"
+openapi: "3.0.3"
+info:
+  title: spark-udf-lp 函数契约
+  version: 1.0.0
+  description: >
+    Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约。
+    构建产物发布至 HDFS /udf/，函数注册于 lpudf 库（唯一注册地址）。
+    2026-08-27（迭代 4）：恢复迭代 1~3 的 12 个基线函数条目 + 新增字符串处理 10 个（released，UAT 通过）。
+    2026-08-28（迭代 6/7）：新增地理函数 16 个（st_* 系列，released，UAT 通过）；正式发布 1.1.9（版本已固化于 pom revision）。
+
+functions:
+  # ---- 迭代 1 基线（3 个，released）----
+  udf_prefix:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.PrefixUdf
+    description: 返回字符串前 4 个字符（示例 UDF）；str 为 NULL 时返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 字符串表达式
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.udf_prefix('abcdef')"
+        result: "abcd"
+  udaf_string_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.StringAggUDAF
+    description: 字符串列聚合去重拼接：按字典序排序、逗号分隔输出，NULL 行忽略。
+    parameters:
+      - name: col
+        type: string
+        required: true
+        description: 待聚合的字符串列
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.udaf_string_agg(col) FROM (SELECT array('b','a','c') AS col) t"
+        result: "a,b,c"
+  udtf_split_rows:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.SplitRowsUDTF
+    description: 字符串按分隔符拆分为多行（单列输出）；NULL/空串无输出，分隔符 NULL/空时默认逗号。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待拆分的字符串
+      - name: delim
+        type: string
+        required: false
+        description: 分隔符（字面量匹配），默认逗号
+    returns:
+      type: table
+      columns:
+        - name: col
+          type: string
+    examples:
+      - sql: "SELECT lpudf.udtf_split_rows('a,b,c') AS col"
+        result: "a / b / c（3 行）"
+
+  # ---- 迭代 2 基线（9 个 JSON 函数，released）----
+  json_valid:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonValidUdf
+    description: 校验输入字符串是否为合法 JSON（RFC 8259），合法返回 true，非法返回 false；SQL NULL 入参返回 NULL。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: 待校验的 JSON 文本
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.json_valid('{\"a\":1}')"
+        result: "true"
+  json_extract:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonExtractUdf
+    description: 按 JSONPath 提取值并返回 JSON 文本；path 支持 $.key / $[n] / $['key'] 子集，目标不存在返回 NULL，path 语法非法抛错，非法 JSON 返回 NULL。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本
+      - name: path
+        type: string
+        required: true
+        description: JSONPath 表达式，如 '$.a'、'$.a[0]'
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.json_extract('{\"a\":{\"b\":1}}', '$.a.b')"
+        result: "1"
+  json_length:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonLengthUdf
+    description: 返回 JSON 数据长度：数组为元素数、对象为成员数、其它类型为 1，不递归计算；未指定 path 时作用于整个 JSON。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本
+      - name: path
+        type: string
+        required: false
+        description: JSONPath 表达式（可选）
+    returns:
+      type: integer
+    examples:
+      - sql: "SELECT lpudf.json_length('[1,2,3]')"
+        result: "3"
+  json_type:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonTypeUdf
+    description: 返回 JSON 数据类型名称（小写）：string / number / boolean / null / object / array。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.json_type('{\"a\":1}')"
+        result: "object"
+  json_exists:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonExistsUdf
+    description: 判断 JSONPath 对应值是否存在，存在返回 true（含值为 null 的键），不存在或数组越界返回 false。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本
+      - name: path
+        type: string
+        required: true
+        description: JSONPath 表达式
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.json_exists('{\"a\":null}', '$.a')"
+        result: "true"
+  json_contains:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonContainsUdf
+    description: 判断 JSON 数据是否包含与 candidate 深度相等的节点（覆盖数组元素/对象值匹配），包含返回 true；path 不存在或语法非法返回 false。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: 待检查的 JSON 文本
+      - name: candidate
+        type: string
+        required: true
+        description: 要匹配的 JSON 元素文本，如 '4'、'\"abc\"'、'{\"a\":1}'
+      - name: path
+        type: string
+        required: false
+        description: JSONPath 表达式（可选）
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.json_contains('[1,2,3]', '2')"
+        result: "true"
+  json_pretty:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonPrettyUdf
+    description: 美化 JSON：增加换行与缩进（每层 4 空格缩进、键值冒号后无空格）。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.json_pretty('{\"a\":1}')"
+        result: "{\n    \"a\": 1\n}"
+  json_strip_nulls:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.JsonStripNullsUdf
+    description: 递归移除值为 null 的字段/元素；include_arrays 默认 true，remove_empty 默认 false，path 仅限第 4 参。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 文本（对象或数组）
+      - name: include_arrays
+        type: boolean
+        required: false
+        description: 是否删除数组内 null（可选，默认 true）
+      - name: remove_empty
+        type: boolean
+        required: false
+        description: 删除后是否移除空对象/空数组（可选，默认 false）
+      - name: path
+        type: string
+        required: false
+        description: JSONPath，仅处理该路径下的 null（必须作为第 4 参）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.json_strip_nulls('{\"a\":1,\"b\":null}')"
+        result: "{\"a\":1}"
+  json_explode:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.JsonExplodeUDTF
+    description: 将 JSON 数组/对象展开为多行（固定输出两列 key, value）：数组每元素一行 key 为 NULL，对象每键一行；NULL/非法 JSON/非数组对象输出 0 行。
+    parameters:
+      - name: json
+        type: string
+        required: true
+        description: JSON 数组或对象文本
+    returns:
+      type: table
+      columns:
+        - name: key
+          type: string
+        - name: value
+          type: string
+    examples:
+      - sql: "SELECT lpudf.json_explode('{\"a\":1,\"b\":2}') AS (k, v)"
+        result: "a,1 / b,2（2 行）"
+
+  # ---- 迭代 4 新增：字符串处理函数（10 个，released）----
+  keyvalue:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.KeyvalueUdf
+    description: 从半结构化 kv 串中提取指定 key 的值；2 参形式用默认分隔符（& 分隔键值对、= 分隔 key/value），4 参形式自定义 split1/split2；key 不存在返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 半结构化字符串，如 'k1=v1&k2=v2'
+      - name: key
+        type: string
+        required: true
+        description: 要提取的 key 名（2 参形式第 2 参）
+      - name: split1
+        type: string
+        required: false
+        description: 键值对分隔符（4 参形式，默认 &）
+      - name: split2
+        type: string
+        required: false
+        description: key/value 分隔符（4 参形式，默认 =）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.keyvalue('k1=v1&k2=v2', 'k2')"
+        result: "v2"
+      - sql: "SELECT lpudf.keyvalue('k1:v1;k2:v2', ';', ':', 'k2')"
+        result: "v2"
+  keyvalue_tuple:
+    kind: UDTF
+    status: released
+    class: com.liangpu.udtf.KeyvalueTupleUDTF
+    description: 半结构化 kv 串多键一次提取（UDTF）：每 key 一列输出，列序与参数一致，找不到的 key 为 NULL；str 为 NULL 或非 kv 结构输出 0 行。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 半结构化字符串，如 'k1=v1&k2=v2'
+      - name: split1
+        type: string
+        required: true
+        description: 键值对分隔符，如 '&'
+      - name: split2
+        type: string
+        required: true
+        description: key/value 分隔符，如 '='
+      - name: key1..keyN
+        type: string
+        required: true
+        description: 至少 1 个 key（可变参数，第 4 参起），输出一列对应一个 key
+    returns:
+      type: table
+      columns:
+        - name: key1..keyN
+          type: string
+    examples:
+      - sql: "SELECT lpudf.keyvalue_tuple('k1=v1&k2=v2', '&', '=', 'k1', 'k2') AS (k1, k2)"
+        result: "v1,v2（1 行 2 列）"
+  url_encode:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.UrlEncodeUdf
+    description: URL 百分号编码（application/x-www-form-urlencoded）：空格→+、-_. 保留、* 不编码、~→%7E、非 ASCII 按 UTF-8 字节编码；NULL 返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待编码字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.url_encode('a b')"
+        result: "a+b"
+      - sql: "SELECT lpudf.url_encode('中')"
+        result: "%E4%B8%AD"
+  url_decode:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.UrlDecodeUdf
+    description: URL 百分号解码（url_encode 逆操作）：+→空格、%XX 按 UTF-8 还原；非法百分号序列（数据问题）返回 NULL；NULL 返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待解码字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.url_decode('a+b')"
+        result: "a b"
+      - sql: "SELECT lpudf.url_decode('%E4%B8%AD')"
+        result: "中"
+  mask_hash:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.MaskHashUdf
+    description: 脱敏哈希：对字符串做不可逆哈希，输出固定 64 字符小写十六进制（SHA-256）；NULL 或非字符串类型入参返回 NULL（算法与 MC 不要求结果一致）。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 待脱敏字符串
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.mask_hash('abc')"
+        result: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  regexp_count:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpCountUdf
+    description: 统计正则匹配次数；可选起始位置 fromPos（1-based）；无匹配返回 0，fromPos 越界不抛错返回 0；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: fromPos
+        type: integer
+        required: false
+        description: 起始匹配位置（1-based，默认 1）
+    returns:
+      type: integer
+    examples:
+      - sql: "SELECT lpudf.regexp_count('a1b2c3', '[0-9]')"
+        result: "3"
+      - sql: "SELECT lpudf.regexp_count('a1b2c3', '[0-9]', 3)"
+        result: "2"
+  regexp_extract_all:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpExtractAllUdf
+    description: 正则全量提取：返回所有匹配子串的 array<string>；可选 group 指定提取组（默认 0 全匹配）；无匹配返回空数组；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: group
+        type: integer
+        required: false
+        description: 捕获组索引（默认 0，全匹配）
+    returns:
+      type: array<string>
+    examples:
+      - sql: "SELECT lpudf.regexp_extract_all('a1b2c3', '[0-9]')"
+        result: "[\"1\",\"2\",\"3\"]"
+  regexp_substr:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpSubstrUdf
+    description: 返回正则匹配的子串；可选起始位置 fromPos（1-based）与出现次数 occurrence；无匹配返回 NULL；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: fromPos
+        type: integer
+        required: false
+        description: 起始匹配位置（1-based，默认 1）
+      - name: occurrence
+        type: integer
+        required: false
+        description: 第几次出现（默认 1）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.regexp_substr('abc123def456', '[0-9]+')"
+        result: "123"
+      - sql: "SELECT lpudf.regexp_substr('abc123def456', '[0-9]+', 1, 2)"
+        result: "456"
+  regexp_replace_nth:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.RegexpReplaceNthUdf
+    description: 只替换第 nth 次正则匹配（MC regexp_replace occurrence 增强，换名避免与内置冲突）；repl 支持 \\1 后向引用；超出匹配次数原样返回；NULL 入参返回 NULL。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 源字符串
+      - name: pattern
+        type: string
+        required: true
+        description: 正则表达式（Java Pattern 语法）
+      - name: repl
+        type: string
+        required: true
+        description: 替换串，支持 \\1 后向引用（原样传入 appendReplacement）
+      - name: occurrence
+        type: integer
+        required: false
+        description: 只替换第几次匹配（默认 1）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.regexp_replace_nth('abc123def456', '[0-9]+', 'X')"
+        result: "abcXdef456"
+      - sql: "SELECT lpudf.regexp_replace_nth('abc123def456', '[0-9]+', 'X', 2)"
+        result: "abc123defX"
+  find_in_set_ex:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.FindInSetExUdf
+    description: 返回 str 在 str_list（分隔符列表）中的位置（1-based）；找不到返回 0；支持第 3 参自定义分隔符（默认逗号，与内置 find_in_set 一致）；str 或 str_list 为 NULL 返回 0。
+    parameters:
+      - name: str
+        type: string
+        required: true
+        description: 要查找的字符串
+      - name: str_list
+        type: string
+        required: true
+        description: 由分隔符连接的元素列表，如 'a,b,c'
+      - name: delimiter
+        type: string
+        required: false
+        description: 自定义分隔符（默认逗号）
+    returns:
+      type: integer
+    examples:
+      - sql: "SELECT lpudf.find_in_set_ex('b', 'a,b,c')"
+        result: "2"
+      - sql: "SELECT lpudf.find_in_set_ex('b', 'a;b;c', ';')"
+        result: "2"
+  any_value:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.AnyValueUDAF
+    description: 任选组内一个非 NULL 值返回；全 NULL 或空组返回 NULL。
+    parameters:
+      - name: col
+        type: any
+        required: true
+        description: 基础类型的输入列，NULL 值被忽略
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.any_value(job) FROM lpudf.emp"
+        result: "非 NULL 值之一（非确定性）"
+  map_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MapAggUDAF
+    description: 将两列聚合为 Map：key 为第一个参数，value 为第二个参数；重复 key 后者覆盖，NULL key 忽略，NULL value 保留。
+    parameters:
+      - name: key
+        type: any
+        required: true
+        description: 作为 Map key 的列（基础类型），NULL 所在行被忽略
+      - name: value
+        type: any
+        required: true
+        description: 作为 Map value 的列（基础类型），NULL 保留
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT lpudf.map_agg(deptno, ename) FROM lpudf.emp GROUP BY deptno"
+        result: "Map<deptno, ename>（重复 deptno 取后者）"
+  median:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MedianUDAF
+    description: 返回数值列的中位数（精确）：排序后取中间值，偶数个取中间两值均值，NULL 忽略，全 NULL 或空组返回 NULL。
+    parameters:
+      - name: col
+        type: numeric
+        required: true
+        description: 数值列（BIGINT/DOUBLE），NULL 被忽略
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.median(sal) FROM lpudf.emp"
+        result: "3000（示例；按组内实际数据）"
+  arg_max:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.ArgMaxUDAF
+    description: 返回 v_max 取到最大值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。
+    parameters:
+      - name: v_max
+        type: any
+        required: true
+        description: 用于比较取最大值的列（基础类型），NULL 所在行被忽略
+      - name: v_ret
+        type: any
+        required: true
+        description: v_max 最大时返回的关联列值（基础类型）
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.arg_max(sal, ename) FROM lpudf.emp"
+        result: "薪水最高员工的姓名"
+  arg_min:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.ArgMinUDAF
+    description: 返回 v_min 取到最小值时对应的 v_ret；参数序为比较列在前、返回列在后，NULL 忽略，并列结果非确定，全 NULL 返回 NULL。
+    parameters:
+      - name: v_min
+        type: any
+        required: true
+        description: 用于比较取最小值的列（基础类型），NULL 所在行被忽略
+      - name: v_ret
+        type: any
+        required: true
+        description: v_min 最小时返回的关联列值（基础类型）
+    returns:
+      type: any
+    examples:
+      - sql: "SELECT lpudf.arg_min(sal, ename) FROM lpudf.emp"
+        result: "薪水最低员工的姓名"
+  histogram:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.HistogramUDAF
+    description: 统计列值频次，返回 Map（key 为输入值，value 为出现次数 bigint）；NULL 不计入，空组返回空 Map。
+    parameters:
+      - name: col
+        type: any
+        required: true
+        description: 基础类型的输入列，NULL 不计入
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT lpudf.histogram(job) FROM lpudf.emp"
+        result: "Map<job, 出现次数>"
+  multimap_agg:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.MultimapAggUDAF
+    description: 将两列聚合为 Multimap（Map<k, Array<v>>）：key 为第一个参数，value 为第二个参数；NULL key 忽略，NULL value 保留进数组。
+    parameters:
+      - name: key
+        type: any
+        required: true
+        description: 作为 Map key 的列（基础类型），NULL 所在行被忽略
+      - name: value
+        type: any
+        required: true
+        description: 作为数组元素的列（基础类型），NULL 保留进数组
+    returns:
+      type: map
+    examples:
+      - sql: "SELECT deptno, lpudf.multimap_agg(deptno, ename) FROM lpudf.emp GROUP BY deptno"
+        result: "Map<deptno, Array<ename>>"
+  wm_concat:
+    kind: UDAF
+    status: released
+    class: com.liangpu.udaf.WmConcatUDAF
+    description: 按分隔符 sep 连接组内字符串（不去重、不排序），NULL 忽略，全 NULL 或空组返回 NULL；sep 建议为常量。
+    parameters:
+      - name: sep
+        type: string
+        required: true
+        description: 连接分隔符（建议常量）
+      - name: col
+        type: any
+        required: true
+        description: 待连接的字符串列（基础类型），NULL 被忽略
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT deptno, lpudf.wm_concat(',', ename) FROM lpudf.emp GROUP BY deptno"
+        result: "逗号分隔的姓名列表"
+# ---- 迭代 6 新增：地理函数（16 个，released，UDF，ADR-8 无前缀注册名）----
+# 地理对象载体: Spark 无 GEOGRAPHY 类型，参数/返回统一 STRING(WKT)；st_asbinary/st_geogfromwkb 用 BINARY(WKB)
+  st_geogpoint:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StGeogpointUdf
+    description: 由经度/纬度构造点地理对象（返回 WKT）。lon∈[-180,180] 超出按 360° 归一化（如 270→-90）；lat∈[-90,90] 超出报错。
+    parameters:
+      - name: longitude
+        type: double
+        required: true
+        description: 经度，超出 [-180,180] 按 360 取模归一化
+      - name: latitude
+        type: double
+        required: true
+        description: 纬度，超出 [-90,90] 报错
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogpoint(2, 4)"
+        result: "POINT (2 4)"
+      - sql: "SELECT lpudf.st_geogpoint(lng, lat) FROM VALUES (3.0, 4.0), (1000.0, 80) tmp(lng, lat)"
+        result: "POINT (3 4) / POINT (-80 80)（lon 360° 归一化；VALUES 表字面量列亦兼容）"
+  st_geogfromtext:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StGeogfromtextUdf
+    description: 解析 WKT 文本为地理对象（返回规范化 WKT）。支持 POINT/LINESTRING/POLYGON/EMPTY；不支持 Z/M；POINT EMPTY 输出 GEOMETRYCOLLECTION EMPTY；非法 WKT 报错。
+    parameters:
+      - name: wkt
+        type: string
+        required: true
+        description: WKT 文本
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogfromtext('POINT (2 4)')"
+        result: "POINT (2 4)"
+  st_geogfromwkb:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StGeogfromwkbUdf
+    description: 解析 WKB 二进制为地理对象（返回 WKT）。非法 WKB 报错。
+    parameters:
+      - name: wkb
+        type: binary
+        required: true
+        description: WKB 二进制
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogfromwkb(x'000000000140000000000000004010000000000000')"
+        result: "POINT (2 4)"
+  st_astext:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StAstextUdf
+    description: 地理对象转 WKT 文本。输入 NULL → NULL；空几何输出 GEOMETRYCOLLECTION EMPTY。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_astext(lpudf.st_geogpoint(2, 4))"
+        result: "POINT (2 4)"
+  st_asbinary:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StAsbinaryUdf
+    description: 地理对象转 WKB 二进制。输入 NULL → NULL。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: binary
+    examples:
+      - sql: "SELECT lpudf.st_asbinary(lpudf.st_geogpoint(2, 4))"
+        result: "21 字节 big-endian WKB，与 MaxCompute 一致。binary 列显示随客户端而异：odps cmd 为 =XX 转义（如 =00=00=00=00=01@=00=...），beeline/Dinky 直接按字符串打印为乱码，建议用 hex()/to_base64() 查看"
+      - sql: "SELECT hex(lpudf.st_asbinary(lpudf.st_geogpoint(2, 4)))"
+        result: "000000000140000000000000004010000000000000"
+  st_x:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StXUdf
+    description: 取点地理对象的经度（x 坐标）。输入非 POINT 报错；NULL → NULL。
+    parameters:
+      - name: point
+        type: string
+        required: true
+        description: POINT 的 WKT
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_x(lpudf.st_geogpoint(2, 4))"
+        result: "2.0"
+  st_y:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StYUdf
+    description: 取点地理对象的纬度（y 坐标）。输入非 POINT 报错；NULL → NULL。
+    parameters:
+      - name: point
+        type: string
+        required: true
+        description: POINT 的 WKT
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_y(lpudf.st_geogpoint(2, 4))"
+        result: "4.0"
+  st_boundingbox:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StBoundingboxUdf
+    description: 返回地理对象外接矩形 STRUCT<xmin,ymin,xmax,ymax>。输入 NULL/空 → NULL。球面 vs 平面存在微小精度差异。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: struct
+      columns:
+        - name: xmin
+          type: double
+        - name: ymin
+          type: double
+        - name: xmax
+          type: double
+        - name: ymax
+          type: double
+    examples:
+      - sql: "SELECT lpudf.st_boundingbox(lpudf.st_geogfromtext('LINESTRING (0 0, 2 1, 4 5)'))"
+        result: "{0, 0, 4, 5}"
+  st_distance:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StDistanceUdf
+    description: 两地理对象间最短距离（球面大圆，单位米，haversine）。任一输入 NULL/空 → NULL。平面近似精度 ~0.01%。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_distance(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(1, 1))"
+        result: "约 157250（米）"
+  st_dwithin:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StDwithinUdf
+    description: 判断两地理对象最短距离是否 ≤ dist 米。任一输入 NULL/空 → FALSE；dist 可为 0（判断点在多边形内）。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+      - name: dist
+        type: double
+        required: true
+        description: 距离阈值（米）
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_dwithin(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(0, 0.001), 150)"
+        result: "true"
+  st_contains:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StContainsUdf
+    description: 判断 geog1 是否包含 geog2 的全部点（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_contains(lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'), lpudf.st_geogpoint(5, 5))"
+        result: "true"
+  st_covers:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StCoversUdf
+    description: 判断 geog1 是否覆盖 geog2 的全部点（含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_covers(lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'), lpudf.st_geogpoint(0, 0))"
+        result: "true"
+  st_intersects:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StIntersectsUdf
+    description: 判断两地理对象是否有公共点（hole 内不算相交）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_intersects(lpudf.st_geogfromtext('LINESTRING (0 5, 10 5)'), lpudf.st_geogfromtext('POLYGON ((2 2, 8 2, 8 8, 2 8, 2 2))'))"
+        result: "true"
+  st_within:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StWithinUdf
+    description: 判断 geog1 的全部点是否在 geog2 内（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_within(lpudf.st_geogpoint(5, 5), lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'))"
+        result: "true"
+  st_makeline:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StMakelineUdf
+    description: 由两个点或点数组构造线（返回 WKT）。任一输入 NULL（含数组元素 NULL）→ NULL；两点相同/数组单元素 → 退化为 Point；数组至少 1 元素。
+    parameters:
+      - name: geog1
+        type: any
+        required: true
+        description: POINT WKT 或 POINT WKT 数组
+      - name: geog2
+        type: string
+        required: false
+        description: 第二个 POINT WKT（geog1 为数组时省略）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_makeline(lpudf.st_geogpoint(2, 4), lpudf.st_geogpoint(3, 5))"
+        result: "LINESTRING (2 4, 3 5)"
+  st_makepolygon:
+    kind: UDF
+    status: released
+    class: com.liangpu.udf.geo.StMakepolygonUdf
+    description: >-
+      由外环构造多边形（返回 WKT），双签名：① 阿里云文档签名——shell 为 LINESTRING WKT（geog）、holes 为 LINESTRING WKT 数组（每个 LINESTRING 一个内环，支持多内环）；
+      ② 兼容签名——shell/holes 为 POINT WKT 数组（holes 所有 POINT 合并为单内环）。各环需 ≥3 个不同顶点，首尾不同自动补闭合边；任一 NULL（含数组元素 NULL）→ NULL；空对象/非法类型报错。
+    parameters:
+      - name: shell
+        type: string|array
+        required: true
+        description: 外环：LINESTRING WKT（geog）或 POINT WKT 数组
+      - name: holes
+        type: array
+        required: false
+        description: 内环：LINESTRING WKT 数组（每个 LINESTRING 一个内环）或 POINT WKT 数组（合并为单内环）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_makepolygon(lpudf.st_geogfromtext('LINESTRING (0 0, 1 0, 1 1)'))"
+        result: "POLYGON ((0 0, 1 0, 1 1, 0 0))"
+      - sql: "SELECT lpudf.st_makepolygon(lpudf.st_geogfromtext('LINESTRING (0 0, 10 0, 10 10, 0 10, 0 0)'), array(lpudf.st_geogfromtext('LINESTRING (2 2, 2 4, 4 4, 4 2, 2 2)')))"
+        result: "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (2 2, 2 4, 4 4, 4 2, 2 2))"
+      - sql: "SELECT lpudf.st_makepolygon(array(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(4, 0), lpudf.st_geogpoint(4, 4), lpudf.st_geogpoint(0, 4)))"
+        result: "POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))"
