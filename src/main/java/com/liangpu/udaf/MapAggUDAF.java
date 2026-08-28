@@ -33,7 +33,7 @@ import java.util.Map;
         arguments = "key - 作为 Map key 的列（基础类型），NULL 所在行被忽略\nvalue - 作为 Map value 的列（基础类型），NULL 保留")
 public class MapAggUDAF extends AbstractGenericUDAFResolver {
 
-    /** Spark 2.4 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
+    /** Spark 3.3.1 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
     @Override
     public GenericUDAFEvaluator getEvaluator(TypeInfo[] parameters) throws SemanticException {
         return buildEvaluator(parameters);

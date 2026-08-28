@@ -34,7 +34,7 @@ import java.io.Serializable;
         arguments = "sep - 连接分隔符（建议常量）\ncol - 待连接的字符串列（基础类型），NULL 被忽略")
 public class WmConcatUDAF extends AbstractGenericUDAFResolver {
 
-    /** Spark 2.4 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
+    /** Spark 3.3.1 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
     @Override
     public GenericUDAFEvaluator getEvaluator(TypeInfo[] parameters) throws SemanticException {
         return buildEvaluator(parameters);

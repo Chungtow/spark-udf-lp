@@ -641,3 +641,304 @@ functions:
     examples:
       - sql: "SELECT deptno, lpudf.wm_concat(',', ename) FROM lpudf.emp GROUP BY deptno"
         result: "逗号分隔的姓名列表"
+# ---- 迭代 6：地理函数（16 个，ADR-8 无前缀注册名，UDF）----
+# 地理对象载体: Spark 无 GEOGRAPHY 类型，参数/返回统一 STRING(WKT)；st_asbinary/st_geogfromwkb 用 BINARY(WKB)
+  st_geogpoint:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StGeogpointUdf
+    description: 由经度/纬度构造点地理对象（返回 WKT）。lon∈[-180,180] 超出按 360° 归一化（如 270→-90）；lat∈[-90,90] 超出报错。
+    parameters:
+      - name: longitude
+        type: double
+        required: true
+        description: 经度，超出 [-180,180] 按 360 取模归一化
+      - name: latitude
+        type: double
+        required: true
+        description: 纬度，超出 [-90,90] 报错
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogpoint(2, 4)"
+        result: "POINT (2 4)"
+      - sql: "SELECT lpudf.st_geogpoint(lng, lat) FROM VALUES (3.0, 4.0), (1000.0, 80) tmp(lng, lat)"
+        result: "POINT (3 4) / POINT (-80 80)（lon 360° 归一化；VALUES 表字面量列亦兼容）"
+  st_geogfromtext:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StGeogfromtextUdf
+    description: 解析 WKT 文本为地理对象（返回规范化 WKT）。支持 POINT/LINESTRING/POLYGON/EMPTY；不支持 Z/M；POINT EMPTY 输出 GEOMETRYCOLLECTION EMPTY；非法 WKT 报错。
+    parameters:
+      - name: wkt
+        type: string
+        required: true
+        description: WKT 文本
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogfromtext('POINT (2 4)')"
+        result: "POINT (2 4)"
+  st_geogfromwkb:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StGeogfromwkbUdf
+    description: 解析 WKB 二进制为地理对象（返回 WKT）。非法 WKB 报错。
+    parameters:
+      - name: wkb
+        type: binary
+        required: true
+        description: WKB 二进制
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_geogfromwkb(x'000000000140000000000000004010000000000000')"
+        result: "POINT (2 4)"
+  st_astext:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StAstextUdf
+    description: 地理对象转 WKT 文本。输入 NULL → NULL；空几何输出 GEOMETRYCOLLECTION EMPTY。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_astext(lpudf.st_geogpoint(2, 4))"
+        result: "POINT (2 4)"
+  st_asbinary:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StAsbinaryUdf
+    description: 地理对象转 WKB 二进制。输入 NULL → NULL。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: binary
+    examples:
+      - sql: "SELECT lpudf.st_asbinary(lpudf.st_geogpoint(2, 4))"
+        result: "21 字节 big-endian WKB，与 MaxCompute 一致。binary 列显示随客户端而异：odps cmd 为 =XX 转义（如 =00=00=00=00=01@=00=...），beeline/Dinky 直接按字符串打印为乱码，建议用 hex()/to_base64() 查看"
+      - sql: "SELECT hex(lpudf.st_asbinary(lpudf.st_geogpoint(2, 4)))"
+        result: "000000000140000000000000004010000000000000"
+  st_x:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StXUdf
+    description: 取点地理对象的经度（x 坐标）。输入非 POINT 报错；NULL → NULL。
+    parameters:
+      - name: point
+        type: string
+        required: true
+        description: POINT 的 WKT
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_x(lpudf.st_geogpoint(2, 4))"
+        result: "2.0"
+  st_y:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StYUdf
+    description: 取点地理对象的纬度（y 坐标）。输入非 POINT 报错；NULL → NULL。
+    parameters:
+      - name: point
+        type: string
+        required: true
+        description: POINT 的 WKT
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_y(lpudf.st_geogpoint(2, 4))"
+        result: "4.0"
+  st_boundingbox:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StBoundingboxUdf
+    description: 返回地理对象外接矩形 STRUCT<xmin,ymin,xmax,ymax>。输入 NULL/空 → NULL。球面 vs 平面存在微小精度差异。
+    parameters:
+      - name: geog
+        type: string
+        required: true
+        description: WKT 地理对象
+    returns:
+      type: struct
+      columns:
+        - name: xmin
+          type: double
+        - name: ymin
+          type: double
+        - name: xmax
+          type: double
+        - name: ymax
+          type: double
+    examples:
+      - sql: "SELECT lpudf.st_boundingbox(lpudf.st_geogfromtext('LINESTRING (0 0, 2 1, 4 5)'))"
+        result: "{0, 0, 4, 5}"
+  st_distance:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StDistanceUdf
+    description: 两地理对象间最短距离（球面大圆，单位米，haversine）。任一输入 NULL/空 → NULL。平面近似精度 ~0.01%。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: double
+    examples:
+      - sql: "SELECT lpudf.st_distance(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(1, 1))"
+        result: "约 157250（米）"
+  st_dwithin:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StDwithinUdf
+    description: 判断两地理对象最短距离是否 ≤ dist 米。任一输入 NULL/空 → FALSE；dist 可为 0（判断点在多边形内）。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+      - name: dist
+        type: double
+        required: true
+        description: 距离阈值（米）
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_dwithin(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(0, 0.001), 150)"
+        result: "true"
+  st_contains:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StContainsUdf
+    description: 判断 geog1 是否包含 geog2 的全部点（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_contains(lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'), lpudf.st_geogpoint(5, 5))"
+        result: "true"
+  st_covers:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StCoversUdf
+    description: 判断 geog1 是否覆盖 geog2 的全部点（含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_covers(lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'), lpudf.st_geogpoint(0, 0))"
+        result: "true"
+  st_intersects:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StIntersectsUdf
+    description: 判断两地理对象是否有公共点（hole 内不算相交）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_intersects(lpudf.st_geogfromtext('LINESTRING (0 5, 10 5)'), lpudf.st_geogfromtext('POLYGON ((2 2, 8 2, 8 8, 2 8, 2 2))'))"
+        result: "true"
+  st_within:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StWithinUdf
+    description: 判断 geog1 的全部点是否在 geog2 内（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
+    parameters:
+      - name: geog1
+        type: string
+        required: true
+        description: WKT 地理对象 1
+      - name: geog2
+        type: string
+        required: true
+        description: WKT 地理对象 2
+    returns:
+      type: boolean
+    examples:
+      - sql: "SELECT lpudf.st_within(lpudf.st_geogpoint(5, 5), lpudf.st_geogfromtext('POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))'))"
+        result: "true"
+  st_makeline:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StMakelineUdf
+    description: 由两个点或点数组构造线（返回 WKT）。任一输入 NULL（含数组元素 NULL）→ NULL；两点相同/数组单元素 → 退化为 Point；数组至少 1 元素。
+    parameters:
+      - name: geog1
+        type: any
+        required: true
+        description: POINT WKT 或 POINT WKT 数组
+      - name: geog2
+        type: string
+        required: false
+        description: 第二个 POINT WKT（geog1 为数组时省略）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_makeline(lpudf.st_geogpoint(2, 4), lpudf.st_geogpoint(3, 5))"
+        result: "LINESTRING (2 4, 3 5)"
+  st_makepolygon:
+    kind: UDF
+    status: planned
+    class: com.liangpu.udf.geo.StMakepolygonUdf
+    description: >-
+      由外环构造多边形（返回 WKT），双签名：① 阿里云文档签名——shell 为 LINESTRING WKT（geog）、holes 为 LINESTRING WKT 数组（每个 LINESTRING 一个内环，支持多内环）；
+      ② 兼容签名——shell/holes 为 POINT WKT 数组（holes 所有 POINT 合并为单内环）。各环需 ≥3 个不同顶点，首尾不同自动补闭合边；任一 NULL（含数组元素 NULL）→ NULL；空对象/非法类型报错。
+    parameters:
+      - name: shell
+        type: string|array
+        required: true
+        description: 外环：LINESTRING WKT（geog）或 POINT WKT 数组
+      - name: holes
+        type: array
+        required: false
+        description: 内环：LINESTRING WKT 数组（每个 LINESTRING 一个内环）或 POINT WKT 数组（合并为单内环）
+    returns:
+      type: string
+    examples:
+      - sql: "SELECT lpudf.st_makepolygon(lpudf.st_geogfromtext('LINESTRING (0 0, 1 0, 1 1)'))"
+        result: "POLYGON ((0 0, 1 0, 1 1, 0 0))"
+      - sql: "SELECT lpudf.st_makepolygon(lpudf.st_geogfromtext('LINESTRING (0 0, 10 0, 10 10, 0 10, 0 0)'), array(lpudf.st_geogfromtext('LINESTRING (2 2, 2 4, 4 4, 4 2, 2 2)')))"
+        result: "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0), (2 2, 2 4, 4 4, 4 2, 2 2))"
+      - sql: "SELECT lpudf.st_makepolygon(array(lpudf.st_geogpoint(0, 0), lpudf.st_geogpoint(4, 0), lpudf.st_geogpoint(4, 4), lpudf.st_geogpoint(0, 4)))"
+        result: "POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))"

@@ -33,7 +33,7 @@ import java.io.Serializable;
         arguments = "v_max - 用于比较取最大值的列（基础类型），NULL 所在行被忽略\nv_ret - v_max 最大时返回的关联列值（基础类型）")
 public class ArgMaxUDAF extends AbstractGenericUDAFResolver {
 
-    /** Spark 2.4 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
+    /** Spark 3.3.1 HiveUDAFFunction 走 AbstractGenericUDAFResolver.getEvaluator(TypeInfo[]) 路径。 */
     @Override
     public GenericUDAFEvaluator getEvaluator(TypeInfo[] parameters) throws SemanticException {
         return buildEvaluator(parameters);

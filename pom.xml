@@ -111,6 +111,15 @@
       <version>${fastjson2.version}</version>
     </dependency>
 
+    <!-- 地理引擎（st_* 函数系列，迭代 6）：JTS Topology Suite——WKT/WKB 解析 + 空间关系计算
+         （contains/covers/intersects/within/distance）；compile 作用域，shade 打入最终 jar。
+         球面距离（米制）由自实现 haversine 提供（见 udf/geo/GeoUtils）。 -->
+    <dependency>
+      <groupId>org.locationtech.jts</groupId>
+      <artifactId>jts-core</artifactId>
+      <version>1.19.0</version>
+    </dependency>
+
     <!-- 单元测试 -->
     <dependency>
       <groupId>junit</groupId>
