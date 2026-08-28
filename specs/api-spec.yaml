@@ -31,6 +31,7 @@ info:
     Spark 自定义函数库（UDF/UDAF/UDTF）的接口契约。
     构建产物发布至 HDFS /udf/，函数注册于 lpudf 库（唯一注册地址）。
     2026-08-27（迭代 4）：恢复迭代 1~3 的 12 个基线函数条目 + 新增字符串处理 10 个（released，UAT 通过）。
+    2026-08-28（迭代 6/7）：新增地理函数 16 个（st_* 系列，released，UAT 通过）；正式发布 1.1.9（版本已固化于 pom revision）。
 
 functions:
   # ---- 迭代 1 基线（3 个，released）----
@@ -641,11 +642,11 @@ functions:
     examples:
       - sql: "SELECT deptno, lpudf.wm_concat(',', ename) FROM lpudf.emp GROUP BY deptno"
         result: "逗号分隔的姓名列表"
-# ---- 迭代 6：地理函数（16 个，ADR-8 无前缀注册名，UDF）----
+# ---- 迭代 6 新增：地理函数（16 个，released，UDF，ADR-8 无前缀注册名）----
 # 地理对象载体: Spark 无 GEOGRAPHY 类型，参数/返回统一 STRING(WKT)；st_asbinary/st_geogfromwkb 用 BINARY(WKB)
   st_geogpoint:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StGeogpointUdf
     description: 由经度/纬度构造点地理对象（返回 WKT）。lon∈[-180,180] 超出按 360° 归一化（如 270→-90）；lat∈[-90,90] 超出报错。
     parameters:
@@ -666,7 +667,7 @@ functions:
         result: "POINT (3 4) / POINT (-80 80)（lon 360° 归一化；VALUES 表字面量列亦兼容）"
   st_geogfromtext:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StGeogfromtextUdf
     description: 解析 WKT 文本为地理对象（返回规范化 WKT）。支持 POINT/LINESTRING/POLYGON/EMPTY；不支持 Z/M；POINT EMPTY 输出 GEOMETRYCOLLECTION EMPTY；非法 WKT 报错。
     parameters:
@@ -681,7 +682,7 @@ functions:
         result: "POINT (2 4)"
   st_geogfromwkb:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StGeogfromwkbUdf
     description: 解析 WKB 二进制为地理对象（返回 WKT）。非法 WKB 报错。
     parameters:
@@ -696,7 +697,7 @@ functions:
         result: "POINT (2 4)"
   st_astext:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StAstextUdf
     description: 地理对象转 WKT 文本。输入 NULL → NULL；空几何输出 GEOMETRYCOLLECTION EMPTY。
     parameters:
@@ -711,7 +712,7 @@ functions:
         result: "POINT (2 4)"
   st_asbinary:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StAsbinaryUdf
     description: 地理对象转 WKB 二进制。输入 NULL → NULL。
     parameters:
@@ -728,7 +729,7 @@ functions:
         result: "000000000140000000000000004010000000000000"
   st_x:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StXUdf
     description: 取点地理对象的经度（x 坐标）。输入非 POINT 报错；NULL → NULL。
     parameters:
@@ -743,7 +744,7 @@ functions:
         result: "2.0"
   st_y:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StYUdf
     description: 取点地理对象的纬度（y 坐标）。输入非 POINT 报错；NULL → NULL。
     parameters:
@@ -758,7 +759,7 @@ functions:
         result: "4.0"
   st_boundingbox:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StBoundingboxUdf
     description: 返回地理对象外接矩形 STRUCT<xmin,ymin,xmax,ymax>。输入 NULL/空 → NULL。球面 vs 平面存在微小精度差异。
     parameters:
@@ -782,7 +783,7 @@ functions:
         result: "{0, 0, 4, 5}"
   st_distance:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StDistanceUdf
     description: 两地理对象间最短距离（球面大圆，单位米，haversine）。任一输入 NULL/空 → NULL。平面近似精度 ~0.01%。
     parameters:
@@ -801,7 +802,7 @@ functions:
         result: "约 157250（米）"
   st_dwithin:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StDwithinUdf
     description: 判断两地理对象最短距离是否 ≤ dist 米。任一输入 NULL/空 → FALSE；dist 可为 0（判断点在多边形内）。
     parameters:
@@ -824,7 +825,7 @@ functions:
         result: "true"
   st_contains:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StContainsUdf
     description: 判断 geog1 是否包含 geog2 的全部点（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
     parameters:
@@ -843,7 +844,7 @@ functions:
         result: "true"
   st_covers:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StCoversUdf
     description: 判断 geog1 是否覆盖 geog2 的全部点（含边界，DE-9IM）。任一 NULL/空 → FALSE。
     parameters:
@@ -862,7 +863,7 @@ functions:
         result: "true"
   st_intersects:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StIntersectsUdf
     description: 判断两地理对象是否有公共点（hole 内不算相交）。任一 NULL/空 → FALSE。
     parameters:
@@ -881,7 +882,7 @@ functions:
         result: "true"
   st_within:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StWithinUdf
     description: 判断 geog1 的全部点是否在 geog2 内（不含边界，DE-9IM）。任一 NULL/空 → FALSE。
     parameters:
@@ -900,7 +901,7 @@ functions:
         result: "true"
   st_makeline:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StMakelineUdf
     description: 由两个点或点数组构造线（返回 WKT）。任一输入 NULL（含数组元素 NULL）→ NULL；两点相同/数组单元素 → 退化为 Point；数组至少 1 元素。
     parameters:
@@ -919,7 +920,7 @@ functions:
         result: "LINESTRING (2 4, 3 5)"
   st_makepolygon:
     kind: UDF
-    status: planned
+    status: released
     class: com.liangpu.udf.geo.StMakepolygonUdf
     description: >-
       由外环构造多边形（返回 WKT），双签名：① 阿里云文档签名——shell 为 LINESTRING WKT（geog）、holes 为 LINESTRING WKT 数组（每个 LINESTRING 一个内环，支持多内环）；
