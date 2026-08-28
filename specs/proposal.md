@@ -40,9 +40,9 @@
 ### 非函数项
 
 - **REQ-HELP-1：16 个新函数帮助文本登记** — `@ExpressionDescription` + `LpudfFunctionRegistry.ALL` + `api-spec.yaml` 三同步；`DESC FUNCTION lpudf.<fn>` 显示 usage + arguments。
-- **REQ-REG-1：注册三连同步** — `scripts/udf-manifest.txt` 追加 16 行（裸名 ADR-8）+ `LpudfFunctionRegistryTest.EXPECTED_NAMES` 同步 30→46。
+- **REQ-REG-1：注册三连同步** — 父仓库测试槽 `scripts/spark-udf-lp/udf-manifest.txt` 追加 16 行（裸名 ADR-8）+ `LpudfFunctionRegistryTest.EXPECTED_NAMES` 同步 30→46。
 - **REQ-DEP-1：jts-core 依赖** — pom 引入 `org.locationtech.jts:jts-core:1.19.0`（compile，shade 打入；POC 已验证可拉取可运行）。
-- **REQ-DOC-1：迭代收尾文档** — Stage 3 前 `docs/inception/20260828-feat-geo-functions-地理函数.md` 存档；Stage 4 用户指南按需。
+- **REQ-DOC-1：迭代收尾文档** — Stage 3 前父仓库 `docs/spark-udf-lp/inception/20260828-feat-geo-functions-地理函数.md` 存档；Stage 4 用户指南按需。
 
 ## 验收标准
 

@@ -30,7 +30,7 @@
   - 495 用例全绿（含既有 30+ 函数回归）：`mvn test` BUILD SUCCESS
   - 已删除 `GeoPocTest`（9 项验证全部由正式测试覆盖）
 - [x] **S1.3 帮助文本登记**（REQ-HELP-1）— `LpudfFunctionRegistry.ALL` 追加 16 条（Kind.UDF，usage/arguments 对齐 api-spec description）
-- [x] **S1.4 注册三连同步**（REQ-REG-1）— `scripts/udf-manifest.txt` 追加 16 行 `<裸名>|com.liangpu.udf.geo.<类名>`（st_geogpoint / st_geogfromtext / st_geogfromwkb / st_astext / st_asbinary / st_x / st_y / st_boundingbox / st_distance / st_dwithin / st_contains / st_covers / st_intersects / st_within / st_makeline / st_makepolygon）+ `LpudfFunctionRegistryTest.EXPECTED_NAMES` 同步 30→46（勾稽测试 `iteration6GeoFunctionsMatchApiSpec` 通过）
+- [x] **S1.4 注册三连同步**（REQ-REG-1）— 父仓库测试槽 `scripts/spark-udf-lp/udf-manifest.txt` 追加 16 行 `<裸名>|com.liangpu.udf.geo.<类名>`（st_geogpoint / st_geogfromtext / st_geogfromwkb / st_astext / st_asbinary / st_x / st_y / st_boundingbox / st_distance / st_dwithin / st_contains / st_covers / st_intersects / st_within / st_makeline / st_makepolygon）+ `LpudfFunctionRegistryTest.EXPECTED_NAMES` 同步 30→46（勾稽测试 `iteration6GeoFunctionsMatchApiSpec` 通过）
 
 ### 构建
 
@@ -46,7 +46,7 @@
 
 - [x] **L3.1 注册冒烟** — UAT `spark_udf_uat.sh 1.1.8` 全绿（exit=0）：46/46 `DESC FUNCTION lpudf.<fn>` 三段式帮助（Function/Class/Usage）
 - [x] **L3.2 功能矩阵** — UAT L3.3 功能回归 88 例全绿（含 `l32_geo_functions.sql` 29 例：st_distance 锚点 157249.38 ±100m；contains 边界 FALSE / covers 边界 TRUE；geogpoint 270→-90；LE/BE WKB；bbox struct 四字段）
-- [x] **L3.3 分布式验证** — `scripts/uat/l33_distributed.sql` 全绿（制品 1.1.9）：500 万行 POINT 由 `range(5000000)` 分布式生成（count 与 distinct 均 5000000，无丢失重复），对 `st_dwithin` 空间连接（AQE/coalesce 关闭 + `autoBroadcastJoinThreshold=-1` 强制 SMJ + 整数格索引 lon_idx/lat_idx 等值键触发真实 shuffle + dwithin 精过滤）；**64 分区（分布式）与 1 分区（单机串行口径）结果 checksum 完全一致** `(12497500000, 5000, 1, 1)`；锚点可解析：原点 8km 邻域命中 9 格点、5000 探针每枚命中 1（TOTALHIT=5000）；500 万行逐点 `st_distance` 聚合 min=0.0 / max=6727437.14 / avg=3786663.14。期间修复（1.1.9）：`GeoUtils.toDouble` 兼容 `HiveDecimalWritable`——嵌套 UDF 调用（`st_dwithin(st_geogpoint(...), ..., 8000)`）触发 Spark 常量折叠路径时数值字面量被 Hive 包装为该类型，修复前 `IllegalArgumentException: 无法转换为 double`
+- [x] **L3.3 分布式验证** — 父仓库 `scripts/spark-udf-lp/uat/l33_distributed.sql` 全绿（制品 1.1.9）：500 万行 POINT 由 `range(5000000)` 分布式生成（count 与 distinct 均 5000000，无丢失重复），对 `st_dwithin` 空间连接（AQE/coalesce 关闭 + `autoBroadcastJoinThreshold=-1` 强制 SMJ + 整数格索引 lon_idx/lat_idx 等值键触发真实 shuffle + dwithin 精过滤）；**64 分区（分布式）与 1 分区（单机串行口径）结果 checksum 完全一致** `(12497500000, 5000, 1, 1)`；锚点可解析：原点 8km 邻域命中 9 格点、5000 探针每枚命中 1（TOTALHIT=5000）；500 万行逐点 `st_distance` 聚合 min=0.0 / max=6727437.14 / avg=3786663.14。期间修复（1.1.9）：`GeoUtils.toDouble` 兼容 `HiveDecimalWritable`——嵌套 UDF 调用（`st_dwithin(st_geogpoint(...), ..., 8000)`）触发 Spark 常量折叠路径时数值字面量被 Hive 包装为该类型，修复前 `IllegalArgumentException: 无法转换为 double`
 - [x] **L3.4 持久性** — UAT 前 `docker restart spark` 后 46/46 函数仍可用（UAT L3.5 ✓）
 - [x] **L4 回归** — UAT L3.3 旧函数矩阵（字符串 24 / JSON 19 / UDAF 11 / 函数矩阵 5）全量回归通过，无回归
-- [ ] **收尾**（REQ-DOC-1）— `docs/inception/20260828-feat-geo-functions-地理函数.md` 存档；git squash merge → dev、tag 1.1.8（含 1.1.9 修复）、更新版本轨迹；L3.3 分布式验证已勾选完成
+- [ ] **收尾**（REQ-DOC-1）— 父仓库 `docs/spark-udf-lp/inception/20260828-feat-geo-functions-地理函数.md` 存档；git squash merge → dev、tag 1.1.8（含 1.1.9 修复）、更新版本轨迹；L3.3 分布式验证已勾选完成

@@ -1,6 +1,6 @@
 # spark-udf-lp
 
-Spark 自定义 UDF（Hive 风格 `GenericUDF`）新项目。构建产物（jar）发布到集群 HDFS `/udf/`，函数经 **SparkSessionExtensions 会话级注入**（ADR-9，迭代 3 起）注册：`spark.sql.extensions=com.liangpu.help.LpudfExtensions`，任意 STS 会话可直接调用，且 `DESC FUNCTION` 显示与内置函数一致的三段式帮助（Function/Class/Usage）。
+Spark 自定义 UDF（Hive 风格 `GenericUDF`）项目。**本仓库能力终点 = 构建产出 `target/spark-udf-lp-<VER>.jar`**；集群发布（HDFS `/udf/`）、注册、部署与 UAT 均由父仓库负责（测试槽 / 生产槽脚本见父仓库 `scripts/`）。函数经 **SparkSessionExtensions 会话级注入**（ADR-9，迭代 3 起）注册：`spark.sql.extensions=com.liangpu.help.LpudfExtensions`，任意 STS 会话可直接调用，且 `DESC FUNCTION` 显示与内置函数一致的三段式帮助（Function/Class/Usage）。
 
 ## 版本基线
 
@@ -20,13 +20,15 @@ Spark 自定义 UDF（Hive 风格 `GenericUDF`）新项目。构建产物（jar�
 ├── src/test/java/com/liangpu/udf/    # UDF 单测（构建闸门）
 ├── src/test/java/com/liangpu/help/   # 注册清单/扩展加载单测
 ├── builder/                   # 构建镜像（maven:3.9-eclipse-temurin-8）+ settings.xml（阿里云源）
-├── build.sh                   # 容器化构建入口
-└── scripts/
-    ├── udf-manifest.txt       # UDF 注册清单：注册名|类名（UAT 遍历）
-    ├── release_spark_udf_lp.sh # 制品入库 → 父项目 software/spark-udf/
-    ├── deploy_spark_udf_lp.sh  # HDFS 上传 + cp current + 幂等配置 spark-defaults.conf（ADR-9，不再 DROP/CREATE）
-    ├── spark_udf_uat.sh        # 集群 UAT（L3，含 DESC FUNCTION 22/22）
-    └── uat/                    # UAT SQL 用例
+└── build.sh                   # 容器化构建入口
+
+部署 / UAT / 制品入库脚本位于**父仓库** `scripts/spark-udf-lp/`（测试槽，与生产槽
+`scripts/spark-udf/` 双槽分离，唯一交接点 `software/spark-udf/`）：
+- `deploy_spark_udf_lp.sh`  # HDFS 上传 + cp current + 幂等配置 spark-defaults.conf（ADR-9，不再 DROP/CREATE）
+- `spark_udf_uat.sh`        # 集群 UAT（L3，含 DESC FUNCTION）
+- `release_spark_udf_lp.sh` # 制品入库 → 父仓库 software/spark-udf/
+- `udf-manifest.txt`        # UDF 注册清单：注册名|类名（UAT 遍历）
+- `uat/`                    # UAT SQL 用例（l32_*.sql / l33_distributed.sql）
 ```
 
 ## 快速开始
@@ -35,17 +37,19 @@ Spark 自定义 UDF（Hive 风格 `GenericUDF`）新项目。构建产物（jar�
 # 1. 构建（builder 容器内跑单测 + 打包，258 单测为闸门）
 bash build.sh 1.0.1                          # 产物 target/spark-udf-lp-1.0.1.jar
 
+# 2-5 在父仓库根执行（脚本位于父仓库 scripts/spark-udf-lp/）
+
 # 2. 制品入库（写入父仓库 software/spark-udf/）
-bash scripts/release_spark_udf_lp.sh 1.0.1
+bash scripts/spark-udf-lp/release_spark_udf_lp.sh 1.0.1
 
 # 3. 发布 + 注入配置（ADR-9：HDFS 上传 + cp current + 幂等更新 spark-defaults.conf，不再 DROP/CREATE）
-bash scripts/deploy_spark_udf_lp.sh 1.0.1
+bash scripts/spark-udf-lp/deploy_spark_udf_lp.sh 1.0.1
 
 # 4. 整容器重启 STS（容器缺 ps，stop-thriftserver.sh 杀不掉旧进程，必须 docker restart spark 才能单实例加载新配置）
 ssh hivespark03 "docker restart spark" && sleep 30
 
-# 5. 集群 UAT（L3，含 DESC FUNCTION 22/22）
-bash scripts/spark_udf_uat.sh 1.0.1
+# 5. 集群 UAT（L3，含 DESC FUNCTION）
+bash scripts/spark-udf-lp/spark_udf_uat.sh 1.0.1
 ```
 
 验证（STS）:
@@ -63,10 +67,10 @@ beeline -u jdbc:hive2://hivespark03:10015/default
 
 1. 在 `com.liangpu.udf` 包新增类，继承 `org.apache.hadoop.hive.ql.udf.generic.GenericUDF`（参考 `PrefixUdf`），类声明前加 `@ExpressionDescription` 注解（clion 锚点，usage 直写函数名）；
 2. 新增 JUnit 单测（`src/test/java`，覆盖正常/null/边界/入参错误）；
-3. `scripts/udf-manifest.txt` 追加一行：`注册名|完整类名`（UAT 遍历）；
+3. 父仓库 `scripts/spark-udf-lp/udf-manifest.txt` 追加一行：`注册名|完整类名`（UAT 遍历）；
 4. **`src/main/java/com/liangpu/help/LpudfFunctionRegistry.java` 追加清单条目**（name/className/usage/arguments，注入路径的 DESC 帮助数据源）；
-5. 重新构建发布：`bash build.sh <VER> && bash scripts/release_spark_udf_lp.sh <VER> && bash scripts/deploy_spark_udf_lp.sh <VER>`，`docker restart spark` 重启 STS；
-6. 跑 UAT 并留档 `docs/uat/YYYYMMDD-spark-udf-lp-UAT测试报告.md`。
+5. 重新构建发布：`bash build.sh <VER>`（子仓库）→ 父仓库 `bash scripts/spark-udf-lp/release_spark_udf_lp.sh <VER> && bash scripts/spark-udf-lp/deploy_spark_udf_lp.sh <VER>`，`docker restart spark` 重启 STS；
+6. 跑 UAT 并留档报告（归档于父仓库 `docs/spark-udf-lp/uat/`）。
 
 ## 分支策略
 

@@ -65,9 +65,9 @@
 
 - `org.locationtech.jts:jts-core:1.19.0`（compile 作用域，shade 打入；与 fastjson2 同模式，POC 已验证）。
 
-### 2.3 `scripts/` — 发布注册
+### 2.3 发布注册（脚本位于父仓库 `scripts/spark-udf-lp/`）
 
-- `udf-manifest.txt` 追加 16 行 `<裸名>|com.liangpu.udf.geo.<类名>`；其余脚本无改动。
+- 父仓库 `scripts/spark-udf-lp/udf-manifest.txt` 追加 16 行 `<裸名>|com.liangpu.udf.geo.<类名>`；部署/UAT 脚本（deploy_spark_udf_lp.sh / spark_udf_uat.sh / release_spark_udf_lp.sh）位于父仓库 `scripts/spark-udf-lp/`，无改动。
 
 ## 3. 构建设计
 

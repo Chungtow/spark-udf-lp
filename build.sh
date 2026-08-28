@@ -45,5 +45,5 @@ fi
 echo "OK: ${JAR} ($(du -h "${JAR}" | awk '{print $1}'))"
 
 echo ""
-echo "下一步（发布到集群）:"
-echo "  bash scripts/deploy_spark_udf_lp.sh ${VER}"
+echo "构建完成：target/spark-udf-lp-${VER}.jar 已生成。"
+echo "后续流程（发布/部署/UAT）统一见 .agents/skills/spark-udf-dev/SKILL.md。"

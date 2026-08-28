@@ -10,19 +10,12 @@ import org.apache.spark.sql.catalyst.expressions.ExpressionDescription;
 /**
  * 示例 UDF：字符串前缀截断（截取前 4 个字符）。
  *
- * <p>注册（写入 Hive Metastore 永久函数，STS 重启后依然可用）：</p>
- * <pre>
- * CREATE OR REPLACE FUNCTION udf_prefix AS 'com.liangpu.udf.PrefixUdf'
- *   USING JAR 'hdfs://mycluster/udf/spark-udf-lp-&lt;VER&gt;.jar';
- * </pre>
+ * <p>注册方式：函数经 SparkSessionExtensions 会话级注入（ADR-9，详见
+ * README「注意事项」），禁止手动 DROP/CREATE FUNCTION。</p>
  *
- * <p>新增 UDF 规范：</p>
- * <ol>
- *   <li>在 com.liangpu.udf 包下新增类，继承 {@link GenericUDF}；</li>
- *   <li>新增对应 JUnit 单测（src/test/java）；</li>
- *   <li>在 scripts/udf-manifest.txt 追加一行：注册名|类名；</li>
- *   <li>重新构建发布：bash build.sh &lt;VER&gt; + scripts/deploy_spark_udf_lp.sh &lt;VER&gt;。</li>
- * </ol>
+ * <p>新增 UDF 的完整流程（含注册三连同步：父仓库测试槽 udf-manifest.txt /
+ * {@link com.liangpu.help.LpudfFunctionRegistry} / 单测 EXPECTED_NAMES，
+ * 以及构建发布步骤）见 README「新增一个 UDF」。</p>
  */
 @ExpressionDescription(
         usage = "udf_prefix(str) - 返回字符串前 4 个字符（示例 UDF）；str 为 NULL 时返回 NULL。",
